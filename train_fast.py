@@ -99,11 +99,20 @@ def train_model(arch_type: str):
     return results, num_params
 
 def main():
+    import matplotlib.pyplot as plt
+
     architectures = ["Standard", "RT", "MoDA", "ReMoDA"]
     final_results = {}
+    all_learning_curves = {}
 
     for arch in architectures:
         results, params = train_model(arch)
+
+        # Save learning curve data
+        steps = [r[0] for r in results]
+        val_losses = [r[1] for r in results]
+        all_learning_curves[arch] = (steps, val_losses)
+
         final_ppl = results[-1][2]
         final_results[arch] = {
             "params": f"{params / 1e6:.4f}M",
@@ -119,6 +128,19 @@ def main():
         res = final_results[arch]
         print(f"{arch:<15} | {res['params']:<10} | {res['final_val_ppl']:.2f}")
     print(f"{'='*60}")
+
+    # Plot learning curves
+    plt.figure(figsize=(10, 6))
+    for arch, (steps, val_losses) in all_learning_curves.items():
+        plt.plot(steps, val_losses, marker='o', label=arch)
+
+    plt.title("Validation Loss during Training (ReMoDA vs. Baselines)")
+    plt.xlabel("Training Steps")
+    plt.ylabel("Validation Loss")
+    plt.legend()
+    plt.grid(True)
+    plt.savefig("learning_curves.png")
+    print("\nSaved learning curve plot to 'learning_curves.png'.")
 
 if __name__ == "__main__":
     main()

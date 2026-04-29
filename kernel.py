@@ -1,0 +1,84 @@
+import torch
+import torch.nn.functional as F
+
+def unified_attention_reference(
+    q: torch.Tensor,
+    seq_k: torch.Tensor,
+    seq_v: torch.Tensor,
+    depth_k: torch.Tensor = None,
+    depth_v: torch.Tensor = None,
+    causal: bool = True
+) -> torch.Tensor:
+    """
+    Computes joint attention over sequence KV and cross-layer depth KV.
+
+    Args:
+        q: (batch, num_heads, seq_len, head_dim)
+        seq_k: (batch, num_heads, seq_len, head_dim)
+        seq_v: (batch, num_heads, seq_len, head_dim)
+        depth_k: (batch, num_heads, depth_len, head_dim) - optional
+        depth_v: (batch, num_heads, depth_len, head_dim) - optional
+        causal: bool, whether to apply a causal mask to the sequence attention
+
+    Returns:
+        output: (batch, num_heads, seq_len, head_dim)
+    """
+    has_depth = depth_k is not None and depth_v is not None
+
+    if not has_depth:
+        # Standard attention over sequence only
+        return F.scaled_dot_product_attention(
+            q, seq_k, seq_v, is_causal=causal
+        )
+
+    batch, num_heads, seq_len, head_dim = q.shape
+    depth_len = depth_k.shape[2]
+
+    # Concatenate depth and sequence keys/values along the sequence dimension
+    # (batch, num_heads, depth_len + seq_len, head_dim)
+    k_combined = torch.cat([depth_k, seq_k], dim=2)
+    v_combined = torch.cat([depth_v, seq_v], dim=2)
+
+    # We need to construct a custom mask since the depth KV is not causal
+    # but the sequence KV is causal.
+    # The mask should allow:
+    # 1. Any query to attend to any depth KV token (fully visible)
+    # 2. Query at pos `i` to attend to seq KV token `j` only if `j <= i` (causal)
+
+    mask = torch.zeros((seq_len, depth_len + seq_len), dtype=torch.bool, device=q.device)
+
+    # Depth part is fully visible
+    mask[:, :depth_len] = True
+
+    if causal:
+        # Sequence part is causal (lower triangular)
+        seq_mask = torch.tril(torch.ones((seq_len, seq_len), dtype=torch.bool, device=q.device))
+        mask[:, depth_len:] = seq_mask
+    else:
+        # Sequence part is fully visible
+        mask[:, depth_len:] = True
+
+    # SDPA expects a boolean mask of shape (batch, num_heads, seq_len, depth_len + seq_len)
+    # or just broadcastable to it, so we can reshape to (1, 1, seq_len, depth_len + seq_len)
+    mask = mask.view(1, 1, seq_len, depth_len + seq_len)
+
+    # Run scaled dot product attention
+    out = F.scaled_dot_product_attention(
+        q, k_combined, v_combined, attn_mask=mask
+    )
+
+    return out
+
+def get_attention_kernel(use_triton: bool = False):
+    """
+    Returns the appropriate attention kernel.
+    Since we don't have a GPU in this environment, Triton is forced False.
+    """
+    if use_triton:
+        if not torch.cuda.is_available():
+            print("Warning: Triton requested but CUDA is not available. Falling back to PyTorch SDPA reference.")
+            return unified_attention_reference
+        # We would import and return the Triton kernel here if CUDA was available.
+        # But we won't try to compile Triton without a GPU.
+        raise NotImplementedError("Triton kernel is not implemented for CPU execution.")
+    return unified_attention_reference

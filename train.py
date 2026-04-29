@@ -114,6 +114,11 @@ def train_model(arch_type: str, train_loader, val_loader, vocab_size):
             print(f"Step {step:04d} | Train Loss: {loss.item():.4f} | Val Loss: {val_loss:.4f} | Val PPL: {val_ppl:.2f} | Tokens/sec: {tps:.2f}")
             results.append((step, val_loss, val_ppl))
 
+    # Save the ReMoDA model at the end
+    if arch_type == "ReMoDA":
+        torch.save(model.state_dict(), "remoda_model.pt")
+        print("Saved ReMoDA model to remoda_model.pt")
+
     return results, num_params
 
 def main():

@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader, Dataset
 from datasets import load_dataset
 from transformers import AutoTokenizer
 import time
+from sklearn.metrics import f1_score
 
 from config import ReMoDAConfig
 from model import ReMoDAForSequenceClassification
@@ -87,6 +88,8 @@ def train(model, train_loader, optimizer):
     total_loss = 0
     correct = 0
     total = 0
+    all_preds = []
+    all_labels = []
 
     for batch in train_loader:
         input_ids = batch['input_ids']
@@ -103,9 +106,13 @@ def train(model, train_loader, optimizer):
         correct += (preds == labels).sum().item()
         total += labels.size(0)
 
+        all_preds.extend(preds.cpu().numpy())
+        all_labels.extend(labels.cpu().numpy())
+
     avg_loss = total_loss / len(train_loader)
     acc = correct / total
-    return avg_loss, acc
+    f1 = f1_score(all_labels, all_preds, average='macro')
+    return avg_loss, acc, f1
 
 @torch.no_grad()
 def evaluate(model, eval_loader):
@@ -113,6 +120,8 @@ def evaluate(model, eval_loader):
     total_loss = 0
     correct = 0
     total = 0
+    all_preds = []
+    all_labels = []
 
     for batch in eval_loader:
         input_ids = batch['input_ids']
@@ -125,9 +134,13 @@ def evaluate(model, eval_loader):
         correct += (preds == labels).sum().item()
         total += labels.size(0)
 
+        all_preds.extend(preds.cpu().numpy())
+        all_labels.extend(labels.cpu().numpy())
+
     avg_loss = total_loss / len(eval_loader)
     acc = correct / total
-    return avg_loss, acc
+    f1 = f1_score(all_labels, all_preds, average='macro')
+    return avg_loss, acc, f1
 
 def main():
     seeds = [42, 100, 1234]
@@ -135,6 +148,7 @@ def main():
 
     all_eval_accs = []
     all_eval_losses = []
+    all_eval_f1s = []
 
     for seed in seeds:
         print(f"\n--- Running Seed: {seed} ---")
@@ -156,20 +170,22 @@ def main():
         print("Training NLP Task (IMDb Classification)...")
         start_time = time.time()
         for epoch in range(EPOCHS):
-            train_loss, train_acc = train(model, train_loader, optimizer)
-            eval_loss, eval_acc = evaluate(model, eval_loader)
+            train_loss, train_acc, train_f1 = train(model, train_loader, optimizer)
+            eval_loss, eval_acc, eval_f1 = evaluate(model, eval_loader)
 
             print(f"Epoch {epoch+1}/{EPOCHS}")
-            print(f"  Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}")
-            print(f"  Eval Loss:  {eval_loss:.4f} | Eval Acc:  {eval_acc:.4f}")
+            print(f"  Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f} | Train F1: {train_f1:.4f}")
+            print(f"  Eval Loss:  {eval_loss:.4f} | Eval Acc:  {eval_acc:.4f} | Eval F1:  {eval_f1:.4f}")
 
         all_eval_accs.append(eval_acc)
         all_eval_losses.append(eval_loss)
+        all_eval_f1s.append(eval_f1)
         print(f"Seed {seed} Completed in {time.time() - start_time:.2f}s")
 
     print("\n==================================================")
     print(f"Final NLP Task Evaluation Results (Across {len(seeds)} Seeds):")
     print(f"Mean Final Accuracy: {np.mean(all_eval_accs):.4f} | Std Final Accuracy: {np.std(all_eval_accs):.4f}")
+    print(f"Mean Final F1 Score: {np.mean(all_eval_f1s):.4f} | Std Final F1 Score: {np.std(all_eval_f1s):.4f}")
     print(f"Mean Final Loss:     {np.mean(all_eval_losses):.4f} | Std Final Loss:     {np.std(all_eval_losses):.4f}")
     print("==================================================")
 

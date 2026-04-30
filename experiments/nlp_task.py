@@ -28,13 +28,15 @@ class ClassificationDataset(Dataset):
     def __len__(self):
         return len(self.labels)
 
-def get_dataloaders():
-    print("Loading IMDb dataset...")
+import numpy as np
+
+def get_dataloaders(seed=42):
+    print(f"Loading IMDb dataset (seed={seed})...")
     # Using small subset of IMDb for text classification
     dataset = load_dataset("imdb")
 
-    train_dataset = dataset["train"].shuffle(seed=42).select(range(MAX_TRAIN_SAMPLES))
-    eval_dataset = dataset["test"].shuffle(seed=42).select(range(MAX_EVAL_SAMPLES))
+    train_dataset = dataset["train"].shuffle(seed=seed).select(range(MAX_TRAIN_SAMPLES))
+    eval_dataset = dataset["test"].shuffle(seed=seed).select(range(MAX_EVAL_SAMPLES))
 
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
     tokenizer.pad_token = tokenizer.eos_token
@@ -128,25 +130,48 @@ def evaluate(model, eval_loader):
     return avg_loss, acc
 
 def main():
-    train_loader, eval_loader, vocab_size = get_dataloaders()
+    seeds = [42, 100, 1234]
+    print(f"Running NLP Evaluation over seeds: {seeds}")
 
-    config = get_config(vocab_size)
-    print("Initializing ReMoDAForSequenceClassification...")
-    model = ReMoDAForSequenceClassification(config, num_labels=2)
+    all_eval_accs = []
+    all_eval_losses = []
 
-    optimizer = optim.AdamW(model.parameters(), lr=1e-3)
+    for seed in seeds:
+        print(f"\n--- Running Seed: {seed} ---")
 
-    print("Training NLP Task (IMDb Classification)...")
-    start_time = time.time()
-    for epoch in range(EPOCHS):
-        train_loss, train_acc = train(model, train_loader, optimizer)
-        eval_loss, eval_acc = evaluate(model, eval_loader)
+        # Set seeds for reproducibility
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
 
-        print(f"Epoch {epoch+1}/{EPOCHS}")
-        print(f"  Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}")
-        print(f"  Eval Loss:  {eval_loss:.4f} | Eval Acc:  {eval_acc:.4f}")
+        train_loader, eval_loader, vocab_size = get_dataloaders(seed)
 
-    print(f"NLP Task Completed in {time.time() - start_time:.2f}s")
+        config = get_config(vocab_size)
+        print("Initializing ReMoDAForSequenceClassification...")
+        model = ReMoDAForSequenceClassification(config, num_labels=2)
+
+        optimizer = optim.AdamW(model.parameters(), lr=1e-3)
+
+        print("Training NLP Task (IMDb Classification)...")
+        start_time = time.time()
+        for epoch in range(EPOCHS):
+            train_loss, train_acc = train(model, train_loader, optimizer)
+            eval_loss, eval_acc = evaluate(model, eval_loader)
+
+            print(f"Epoch {epoch+1}/{EPOCHS}")
+            print(f"  Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f}")
+            print(f"  Eval Loss:  {eval_loss:.4f} | Eval Acc:  {eval_acc:.4f}")
+
+        all_eval_accs.append(eval_acc)
+        all_eval_losses.append(eval_loss)
+        print(f"Seed {seed} Completed in {time.time() - start_time:.2f}s")
+
+    print("\n==================================================")
+    print(f"Final NLP Task Evaluation Results (Across {len(seeds)} Seeds):")
+    print(f"Mean Final Accuracy: {np.mean(all_eval_accs):.4f} | Std Final Accuracy: {np.std(all_eval_accs):.4f}")
+    print(f"Mean Final Loss:     {np.mean(all_eval_losses):.4f} | Std Final Loss:     {np.std(all_eval_losses):.4f}")
+    print("==================================================")
 
 if __name__ == "__main__":
     main()

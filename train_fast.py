@@ -166,12 +166,19 @@ def main():
         mean_losses = all_learning_curves_mean[arch]
         std_losses = all_learning_curves_std[arch]
 
-        p = plt.plot(all_steps, mean_losses, marker='o', label=arch)
-        color = p[0].get_color()
-        plt.fill_between(all_steps, mean_losses - std_losses, mean_losses + std_losses, color=color, alpha=0.2)
+        # Parse params in millions
+        params_str = final_results[arch]['params']
+        params_m = float(params_str.replace('M', ''))
 
-    plt.title("Validation Loss during Training (ReMoDA vs. Baselines) - Multi-Seed")
-    plt.xlabel("Training Steps")
+        # Calculate effective compute: Steps * Params (M)
+        effective_compute = [step * params_m for step in all_steps]
+
+        p = plt.plot(effective_compute, mean_losses, marker='o', label=arch)
+        color = p[0].get_color()
+        plt.fill_between(effective_compute, mean_losses - std_losses, mean_losses + std_losses, color=color, alpha=0.2)
+
+    plt.title("Validation Loss Normalized by Parameter Count (ReMoDA vs. Baselines)")
+    plt.xlabel("Effective Compute (Steps × MParams)")
     plt.ylabel("Validation Loss")
     plt.legend()
     plt.grid(True)

@@ -4,6 +4,7 @@ import torch.nn as nn
 from typing import Optional, Tuple, List
 from config import ReMoDAConfig
 from layer import ReMoDALayer
+from cache import ReMoDACache
 
 class ReMoDAModel(nn.Module):
     def __init__(self, config: ReMoDAConfig):
@@ -32,10 +33,9 @@ class ReMoDAModel(nn.Module):
         hidden_states = self.embed_tokens(input_ids) + self.position_embeddings(positions)
 
         # Forward pass through layers
-        kv_cache = []
+        kv_cache = ReMoDACache()
         for i, layer in enumerate(self.layers):
-            hidden_states, layer_cache_kv = layer(hidden_states, i, kv_cache)
-            kv_cache.append(layer_cache_kv)
+            hidden_states = layer(hidden_states, i, kv_cache)
 
         hidden_states = self.norm(hidden_states)
         logits = self.lm_head(hidden_states)
@@ -104,10 +104,9 @@ class ReMoDADecisionTransformer(nn.Module):
         hidden_states = stacked_inputs.reshape(batch_size, 3 * seq_length, self.hidden_size)
 
         # Forward pass through layers (bypassing embed_tokens since we just created hidden_states)
-        kv_cache = []
+        kv_cache = ReMoDACache()
         for i, layer in enumerate(self.model.layers):
-            hidden_states, layer_cache_kv = layer(hidden_states, i, kv_cache)
-            kv_cache.append(layer_cache_kv)
+            hidden_states = layer(hidden_states, i, kv_cache)
 
         hidden_states = self.model.norm(hidden_states)
 
@@ -141,10 +140,9 @@ class ReMoDAForSequenceClassification(nn.Module):
 
         hidden_states = self.model.embed_tokens(input_ids) + self.model.position_embeddings(positions)
 
-        kv_cache = []
+        kv_cache = ReMoDACache()
         for i, layer in enumerate(self.model.layers):
-            hidden_states, layer_cache_kv = layer(hidden_states, i, kv_cache)
-            kv_cache.append(layer_cache_kv)
+            hidden_states = layer(hidden_states, i, kv_cache)
 
         hidden_states = self.model.norm(hidden_states)
 

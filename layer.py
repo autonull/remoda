@@ -3,6 +3,7 @@ import torch.nn as nn
 from typing import Optional, Tuple, List
 from config import ReMoDAConfig
 from attention import ReMoDAAttention
+from cache import ReMoDACache
 
 class ReMoDAMLP(nn.Module):
     def __init__(self, config: ReMoDAConfig):
@@ -28,8 +29,8 @@ class ReMoDALayer(nn.Module):
         self,
         hidden_states: torch.Tensor,
         layer_idx: int,
-        kv_cache: List[Tuple[torch.Tensor, torch.Tensor]]
-    ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        kv_cache: ReMoDACache
+    ) -> torch.Tensor:
 
         residual = hidden_states
 
@@ -108,9 +109,9 @@ class ReMoDALayer(nn.Module):
                 batch_size, seq_len, _ = hidden_states.size()
                 k_persistent = k_persistent.view(batch_size, seq_len, self.attn.num_heads, self.attn.head_dim).transpose(1, 2)
                 v_persistent = v_persistent.view(batch_size, seq_len, self.attn.num_heads, self.attn.head_dim).transpose(1, 2)
-                cache_kv = (k_persistent, v_persistent)
+                kv_cache.update(k_persistent, v_persistent, layer_idx)
         else:
             # Standard transformer: the KV cache just stores the input-projected KV
-            cache_kv = seq_kv
+            kv_cache.update(seq_kv[0], seq_kv[1], layer_idx)
 
-        return hidden_states, cache_kv
+        return hidden_states

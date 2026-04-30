@@ -68,16 +68,40 @@ def unified_attention_reference(
 
     return out
 
-def get_attention_kernel(use_triton: bool = False):
+from abc import ABC, abstractmethod
+
+class AttentionKernel(ABC):
+    @abstractmethod
+    def __call__(
+        self,
+        q: torch.Tensor,
+        seq_k: torch.Tensor,
+        seq_v: torch.Tensor,
+        depth_k: torch.Tensor = None,
+        depth_v: torch.Tensor = None,
+        causal: bool = True
+    ) -> torch.Tensor:
+        pass
+
+class PyTorchSDPAKernel(AttentionKernel):
+    def __call__(
+        self,
+        q: torch.Tensor,
+        seq_k: torch.Tensor,
+        seq_v: torch.Tensor,
+        depth_k: torch.Tensor = None,
+        depth_v: torch.Tensor = None,
+        causal: bool = True
+    ) -> torch.Tensor:
+        return unified_attention_reference(q, seq_k, seq_v, depth_k, depth_v, causal)
+
+def get_attention_kernel(use_triton: bool = False) -> AttentionKernel:
     """
-    Returns the appropriate attention kernel.
-    Since we don't have a GPU in this environment, Triton is forced False.
+    Returns the appropriate attention kernel interface.
     """
     if use_triton:
         if not torch.cuda.is_available():
             print("Warning: Triton requested but CUDA is not available. Falling back to PyTorch SDPA reference.")
-            return unified_attention_reference
-        # We would import and return the Triton kernel here if CUDA was available.
-        # But we won't try to compile Triton without a GPU.
+            return PyTorchSDPAKernel()
         raise NotImplementedError("Triton kernel is not implemented for CPU execution.")
-    return unified_attention_reference
+    return PyTorchSDPAKernel()

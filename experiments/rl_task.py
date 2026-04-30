@@ -14,6 +14,19 @@ SEQ_LEN = 20
 EPISODES = 500  # For generating data
 MAX_STEPS = 200
 
+def get_standard_dt_config():
+    # Standard Decision Transformer baseline configuration
+    return ReMoDAConfig(
+        vocab_size=1, # Unused
+        hidden_size=64,
+        num_hidden_layers=2,
+        num_attention_heads=2,
+        intermediate_size=128,
+        max_position_embeddings=MAX_STEPS + 1, # Max timestep is MAX_STEPS
+        use_rt_kv=False,
+        use_moda=False
+    )
+
 def get_dt_config():
     # Since DT interleaves (R, s, a), the actual sequence length processed
     # by the transformer is 3 * SEQ_LEN. We need to account for this in max_position_embeddings.
@@ -253,10 +266,11 @@ def main():
     seeds = [42, 100, 1234]
     print(f"Running RL Evaluation over seeds: {seeds}")
 
-    all_dt_rewards = []
-    all_dt_lengths = []
-    all_random_rewards = []
-    all_random_lengths = []
+    results = {
+        "Random": {"rewards": [], "lengths": []},
+        "Standard-DT": {"rewards": [], "lengths": []},
+        "ReMoDA-DT": {"rewards": [], "lengths": []}
+    }
 
     for seed in seeds:
         print(f"\n--- Running Seed: {seed} ---")
@@ -278,41 +292,56 @@ def main():
 
         print("Evaluating Random Baseline Policy...")
         random_reward, random_length = evaluate_baseline_random(env)
-        all_random_rewards.append(random_reward)
-        all_random_lengths.append(random_length)
+        results["Random"]["rewards"].append(random_reward)
+        results["Random"]["lengths"].append(random_length)
         print(f"Random Baseline -> Avg Reward: {random_reward:.2f} | Avg Ep Length: {random_length:.2f}")
 
         print("Generating Offline Data...")
         trajectories = generate_random_rollouts(env, EPISODES)
         print(f"Generated {len(trajectories)} trajectories.")
 
-        config = get_dt_config()
-        print("Initializing ReMoDA Decision Transformer...")
-        model = ReMoDADecisionTransformer(config, state_dim, action_dim)
+        for arch in ["Standard-DT", "ReMoDA-DT"]:
+            print(f"\n[Evaluating Architecture: {arch}]")
 
-        optimizer = optim.AdamW(model.parameters(), lr=1e-3)
+            # Reset seeds for consistency between architecture runs
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
 
-        print("Training ReMoDA-DT on Offline Data...")
-        train_dt(model, optimizer, trajectories, epochs=100)
+            if arch == "Standard-DT":
+                config = get_standard_dt_config()
+            else:
+                config = get_dt_config()
 
-        print("Evaluating ReMoDA-DT...")
-        # Note: Since the data is random rollouts, it might not learn an optimal policy,
-        # but this verifies the architecture can process the interleaved sequence and learn.
-        dt_reward, dt_length = evaluate_dt(model, env)
-        all_dt_rewards.append(dt_reward)
-        all_dt_lengths.append(dt_length)
-        print(f"ReMoDA-DT -> Avg Reward: {dt_reward:.2f} | Avg Ep Length: {dt_length:.2f}")
+            print(f"Initializing {arch} Decision Transformer...")
+            model = ReMoDADecisionTransformer(config, state_dim, action_dim)
+
+            optimizer = optim.AdamW(model.parameters(), lr=1e-3)
+
+            print(f"Training {arch} on Offline Data...")
+            train_dt(model, optimizer, trajectories, epochs=100)
+
+            print(f"Evaluating {arch}...")
+            dt_reward, dt_length = evaluate_dt(model, env)
+            results[arch]["rewards"].append(dt_reward)
+            results[arch]["lengths"].append(dt_length)
+            print(f"{arch} -> Avg Reward: {dt_reward:.2f} | Avg Ep Length: {dt_length:.2f}")
 
     print("\n=================================================================")
     print(f"Final RL Task Evaluation Results (Across {len(seeds)} Seeds):")
     print("-----------------------------------------------------------------")
     print(f"Random Baseline:")
-    print(f"  Mean Reward:     {np.mean(all_random_rewards):.2f} ± {np.std(all_random_rewards):.2f}")
-    print(f"  Mean Ep Length:  {np.mean(all_random_lengths):.2f} ± {np.std(all_random_lengths):.2f}")
+    print(f"  Mean Reward:     {np.mean(results['Random']['rewards']):.2f} ± {np.std(results['Random']['rewards']):.2f}")
+    print(f"  Mean Ep Length:  {np.mean(results['Random']['lengths']):.2f} ± {np.std(results['Random']['lengths']):.2f}")
+    print("-----------------------------------------------------------------")
+    print(f"Standard-DT Baseline:")
+    print(f"  Mean Reward:     {np.mean(results['Standard-DT']['rewards']):.2f} ± {np.std(results['Standard-DT']['rewards']):.2f}")
+    print(f"  Mean Ep Length:  {np.mean(results['Standard-DT']['lengths']):.2f} ± {np.std(results['Standard-DT']['lengths']):.2f}")
     print("-----------------------------------------------------------------")
     print(f"ReMoDA-DT:")
-    print(f"  Mean Reward:     {np.mean(all_dt_rewards):.2f} ± {np.std(all_dt_rewards):.2f}")
-    print(f"  Mean Ep Length:  {np.mean(all_dt_lengths):.2f} ± {np.std(all_dt_lengths):.2f}")
+    print(f"  Mean Reward:     {np.mean(results['ReMoDA-DT']['rewards']):.2f} ± {np.std(results['ReMoDA-DT']['rewards']):.2f}")
+    print(f"  Mean Ep Length:  {np.mean(results['ReMoDA-DT']['lengths']):.2f} ± {np.std(results['ReMoDA-DT']['lengths']):.2f}")
     print("=================================================================")
 
 if __name__ == "__main__":

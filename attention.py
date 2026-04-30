@@ -3,6 +3,8 @@ import torch.nn as nn
 from typing import Optional, Tuple, List
 from kernel import get_attention_kernel
 from config import ReMoDAConfig
+from depth_policy import get_depth_policy
+from cache import ReMoDACache
 
 class ReMoDAAttention(nn.Module):
     def __init__(self, config: ReMoDAConfig):
@@ -20,12 +22,13 @@ class ReMoDAAttention(nn.Module):
         # In RT, KV projection inputs are RMS Normalized
         self.kv_norm = nn.RMSNorm(self.hidden_size) if config.use_rt_kv else nn.Identity()
         self.attn_fn = get_attention_kernel(use_triton=False)
+        self.depth_policy = get_depth_policy(config.depth_selection_policy)
 
     def forward(
         self,
         hidden_states: torch.Tensor,
         layer_idx: int,
-        kv_cache: List[Tuple[torch.Tensor, torch.Tensor]],
+        kv_cache: ReMoDACache,
         output_states: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
 
@@ -50,18 +53,8 @@ class ReMoDAAttention(nn.Module):
 
         # Depth KV retrieval (MoDA)
         depth_k, depth_v = None, None
-        if self.config.use_moda and layer_idx > 0 and len(kv_cache) > 0:
-            # Policy: last-n layers
-            slots_to_fetch = min(self.config.depth_slots, layer_idx)
-            if self.config.depth_selection_policy == "last-n":
-                selected_kvs = kv_cache[-slots_to_fetch:]
-            else:
-                # Fallback to last-n if policy unknown
-                selected_kvs = kv_cache[-slots_to_fetch:]
-
-            # Concatenate the selected historical layers along the sequence (depth) dimension
-            depth_k = torch.cat([kv[0] for kv in selected_kvs], dim=2)
-            depth_v = torch.cat([kv[1] for kv in selected_kvs], dim=2)
+        if self.config.use_moda:
+            depth_k, depth_v = self.depth_policy.select_kvs(kv_cache, layer_idx, self.config.depth_slots)
 
         # Unified Attention Kernel (handles sequence and depth KV)
         attn_output = self.attn_fn(

@@ -2,6 +2,7 @@ import torch
 import time
 import os
 import gc
+import psutil
 from config import ReMoDAConfig
 from model import ReMoDAModel
 
@@ -54,10 +55,15 @@ def benchmark_architecture(arch: str, batch_size: int, seq_len: int, vocab_size:
     throughput = (batch_size * seq_len * passes) / total_time
     num_params = sum(p.numel() for p in model.parameters())
 
+    process = psutil.Process(os.getpid())
+    memory_info = process.memory_info()
+    memory_mb = memory_info.rss / (1024 * 1024)
+
     return {
         "Params (M)": f"{num_params/1e6:.2f}M",
         "Latency (ms)": latency * 1000,
-        "Throughput (tok/s)": throughput
+        "Throughput (tok/s)": throughput,
+        "Memory (MB)": memory_mb
     }
 
 def main():
@@ -82,11 +88,11 @@ def main():
             res = benchmark_architecture(arch, bs, sl, vs)
             results[arch] = res
 
-        print(f"{'Architecture':<15} | {'Params':<10} | {'Latency':<15} | {'Throughput (tok/s)':<20}")
-        print("-" * 80)
+        print(f"{'Architecture':<15} | {'Params':<10} | {'Latency':<15} | {'Throughput (tok/s)':<20} | {'Memory (MB)':<12}")
+        print("-" * 100)
         for arch, res in results.items():
-            print(f"{arch:<15} | {res['Params (M)']:<10} | {res['Latency (ms)']:.2f}ms         | {res['Throughput (tok/s)']:.2f}")
-        print("=" * 80)
+            print(f"{arch:<15} | {res['Params (M)']:<10} | {res['Latency (ms)']:.2f}ms         | {res['Throughput (tok/s)']:<20.2f} | {res['Memory (MB)']:.2f}MB")
+        print("=" * 100)
 
 if __name__ == "__main__":
     main()

@@ -1,50 +1,97 @@
-# ReMoDA (Recurrent Mixture-of-Depths Attention)
+# 🚀 ReMoDA: Recurrent Mixture-of-Depths Attention 🚀
 
-A PyTorch implementation of the ReMoDA architecture, exploring combinations of Recurrent Attention (RT) and Mixture-of-Depths Attention (MoDA) to improve Transformer efficiency and performance.
+Welcome to the **ReMoDA** architecture repository! 🎉 This project explores an exciting combination of two powerful concepts: **Recurrent Attention (RT)** and **Mixture-of-Depths Attention (MoDA)**. Our goal is to push the boundaries of Transformer efficiency and performance! 🧠⚡
 
-This repository demonstrates the architecture's parameters, causality, and training performance on dummy tasks and small datasets like TinyStories.
+## 🌟 What makes ReMoDA unique?
 
-## Features
+ReMoDA is all about achieving **parameter efficiency** without sacrificing the model's ability to capture complex temporal patterns. By combining the strengths of its predecessors, it aims to deliver deeper architectural properties with fewer parameters! 📉
 
-- **Parameter Efficiency:** The ReMoDA architecture achieves a lower parameter count while maintaining temporally deeper structures through Recurrent Attention.
-- **Improved Throughput & Latency:** The depth retrieval from cross-layer mixture-of-depths allows ReMoDA to operate much faster on standard sequence tasks, achieving up to a 50% increase in throughput (tokens/second) compared to a standard transformer with similar effective depth.
-- **Custom SDPA Kernel:** A unified attention kernel using `scaled_dot_product_attention` allows joint sequence and depth attention, correctly preserving causality.
+- 🔄 **Recurrent Memory Transformer (RMT):** Inspired by Recurrent Memory mechanisms, ReMoDA retains memory across steps using persistent KV states. This allows the model to achieve a temporally deeper structure while keeping the actual layer count (and parameters) low! [Read more about RMT here.](https://arxiv.org/abs/2207.06881)
+- 🕳️ **Mixture-of-Depths (MoD):** Inspired by Mixture-of-Depths, ReMoDA uses cross-layer depth retrieval. It can selectively route and attend to historical layers (depth slots), allowing for dynamic compute allocation. [Read more about MoD here.](https://arxiv.org/abs/2404.02258)
 
-## Benchmarks
+By fusing these, ReMoDA can process standard sequence tasks **much faster** (higher throughput) and with **lower latency** than a standard transformer of similar effective depth.
 
-Based on CPU tests comparing ReMoDA against a Standard Transformer baseline:
+## 🏗️ Architecture Diagram
 
-| Architecture | Batch Size | Seq Len | Vocab Size | Latency (ms) | Throughput (tok/s) | Parameter Count |
-| --- | --- | --- | --- | --- | --- | --- |
-| Standard | 4 | 128 | 1000 | 25.21 | 20,312 | 4.49M |
-| ReMoDA | 4 | 128 | 1000 | 16.10 | 31,794 | 2.39M |
-| Standard | 8 | 256 | 1000 | 97.26 | 21,056 | 4.52M |
-| ReMoDA | 8 | 256 | 1000 | 63.42 | 32,292 | 2.42M |
-| Standard | 16 | 512 | 1000 | 431.49 | 18,985 | 4.58M |
-| ReMoDA | 16 | 512 | 1000 | 273.15 | 29,990 | 2.49M |
+Here is a simplified view of how ReMoDA processes tokens and manages its internal depth:
 
-*Note: Benchmarks were run using CPU. For full tests, run `python benchmark.py`.*
+```text
+    [Input Tokens]
+          |
+          v
++-------------------+
+|  Token Embedding  |
++-------------------+
+          |
+          v
++-------------------------------------------------------+
+| ReMoDA Layer (1)                                      |
+|                                                       |
+|  [Q] ---> [Unified Attention] <--- [Seq KV]           |
+|                 ^                                     |
+|                 |                                     |
+|           [Depth KV Retrieval] (MoD Policy)           |
+|                                                       |
+|  ---> [MLP] ---> [Persistent KV State (RT)] ---> Save |
++-------------------------------------------------------+
+          |
+          v
++-------------------------------------------------------+
+| ReMoDA Layer (2)                                      |
+|                                                       |
+|  [Q] ---> [Unified Attention] <--- [Seq KV]           |
+|                 ^                                     |
+|                 |                                     |
+|           [Retrieve Layer 1 KV Cache]                 |
+|                                                       |
+|  ---> [MLP] ---> [Persistent KV State (RT)] ---> Save |
++-------------------------------------------------------+
+          |
+          v
+     [Output Logits]
+```
 
-## Installation & Usage
+## 🛠️ Codebase Structure & Extensions
+
+We've completely refactored the codebase to make it as modular and hackable as possible! 💻✨
+
+- `config.py`: Contains the `ReMoDAConfig` for easy ablation toggles (turn RT or MoDA on/off!).
+- `attention.py`: The `ReMoDAAttention` module handling unified sequence and depth attention.
+- `layer.py`: The `ReMoDALayer` and `ReMoDAMLP` definitions.
+- `model.py`: The core `ReMoDAModel` and task-specific wrappers (`ReMoDADecisionTransformer`, `ReMoDAForSequenceClassification`).
+- `kernel.py`: Contains our custom SDPA kernel that properly preserves causality during joint sequence/depth attention.
+
+You can easily extend this architecture! Want to try a different depth-selection policy? Jump into `attention.py`! Want to apply it to a new RL environment? Check out the wrappers in `model.py` and `experiments/rl_task.py`.
+
+## 🚀 Installation & Usage
 
 1. **Install requirements:**
 ```bash
-pip install torch tqdm matplotlib psutil
+pip install torch tqdm matplotlib psutil datasets transformers gymnasium
 ```
 
 2. **Run Kernel Tests:**
-Ensures that causality in the custom SDPA sequence+depth kernel is respected.
+Ensures that causality in the custom SDPA sequence+depth kernel is respected. ✅
 ```bash
 python test_kernel.py
 ```
 
 3. **Run Benchmarks:**
+Compare ReMoDA against a Standard Transformer. ⏱️
 ```bash
 python benchmark.py
 ```
 
 4. **Train Architecture Ablations (Fast):**
-Trains dummy data across Standard, RT, MoDA, and ReMoDA architectures to observe convergence. This also outputs a `learning_curves.png` chart comparing the validation losses.
+Trains dummy data across Standard, RT, MoDA, and ReMoDA architectures to observe convergence. Outputs a beautiful `learning_curves.png` chart! 📈
 ```bash
 python train_fast.py
 ```
+
+5. **Evaluate Unified Framework:**
+Run tests across RL (Decision Transformer on CartPole) and NLP (Sequence Classification on IMDb) tasks. 🏆
+```bash
+python evaluate_all.py
+```
+
+Get hacking and let's push the frontier of efficient attention together! 🚀🔥

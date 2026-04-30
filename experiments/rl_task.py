@@ -5,7 +5,8 @@ import gymnasium as gym
 import numpy as np
 import time
 
-from model import ReMoDAConfig, ReMoDADecisionTransformer
+from config import ReMoDAConfig
+from model import ReMoDADecisionTransformer
 
 # Parameters
 BATCH_SIZE = 16

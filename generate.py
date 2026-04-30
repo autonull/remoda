@@ -1,6 +1,7 @@
 import torch
 from transformers import AutoTokenizer
-from model import ReMoDAConfig, ReMoDAModel
+from config import ReMoDAConfig
+from model import ReMoDAModel
 
 def generate_text(model, tokenizer, prompt, max_new_tokens=20):
     model.eval()

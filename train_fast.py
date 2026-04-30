@@ -6,7 +6,8 @@ import math
 import time
 import os
 
-from model import ReMoDAConfig, ReMoDAModel
+from config import ReMoDAConfig
+from model import ReMoDAModel
 
 # We'll generate a dummy dataset that is just small enough to run fast on CPU
 # but still acts as a valid test of the forward/backward pass and metric logging.

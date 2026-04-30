@@ -5,7 +5,8 @@ from datasets import load_dataset
 from transformers import AutoTokenizer
 import time
 
-from model import ReMoDAConfig, ReMoDAForSequenceClassification
+from config import ReMoDAConfig
+from model import ReMoDAForSequenceClassification
 
 # Parameters
 BATCH_SIZE = 8

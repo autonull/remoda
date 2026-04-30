@@ -82,11 +82,36 @@ def get_standard_config(vocab_size):
         use_moda=False
     )
 
+def get_rt_config(vocab_size):
+    return ReMoDAConfig(
+        vocab_size=vocab_size,
+        hidden_size=128,
+        num_hidden_layers=2,
+        num_attention_heads=4,
+        intermediate_size=512,
+        max_position_embeddings=SEQ_LEN,
+        use_rt_kv=True,
+        use_moda=False
+    )
+
+def get_moda_config(vocab_size):
+    return ReMoDAConfig(
+        vocab_size=vocab_size,
+        hidden_size=128,
+        num_hidden_layers=4,
+        num_attention_heads=4,
+        intermediate_size=512,
+        max_position_embeddings=SEQ_LEN,
+        use_rt_kv=False,
+        use_moda=True,
+        depth_slots=2
+    )
+
 def get_config(vocab_size):
     return ReMoDAConfig(
         vocab_size=vocab_size,
         hidden_size=128,
-        num_hidden_layers=4, # ReMoDA can be fewer layers for same performance, but keeping it 4 to compare equivalent param sizes if we want, or less for efficiency. We'll leave it as is to keep things similar.
+        num_hidden_layers=2, # ReMoDA can be fewer layers for same performance.
         num_attention_heads=4,
         intermediate_size=512,
         max_position_embeddings=SEQ_LEN,
@@ -155,20 +180,20 @@ def evaluate(model, eval_loader):
     return avg_loss, acc, f1
 
 def main():
+    import matplotlib.pyplot as plt
+
     seeds = [42, 100, 1234]
     print(f"Running NLP Evaluation over seeds: {seeds}")
 
-    results = {
-        "Standard": {"accs": [], "losses": [], "f1s": []},
-        "ReMoDA": {"accs": [], "losses": [], "f1s": []}
-    }
+    architectures = ["Standard", "RT", "MoDA", "ReMoDA"]
+    results = {arch: {"accs": [], "losses": [], "f1s": []} for arch in architectures}
 
     for seed in seeds:
         print(f"\n--- Running Seed: {seed} ---")
 
         train_loader, eval_loader, vocab_size = get_dataloaders(seed)
 
-        for arch in ["Standard", "ReMoDA"]:
+        for arch in architectures:
             print(f"\n[Evaluating Architecture: {arch}]")
 
             # Set seeds for reproducibility per architecture run
@@ -179,7 +204,11 @@ def main():
 
             if arch == "Standard":
                 config = get_standard_config(vocab_size)
-            else:
+            elif arch == "RT":
+                config = get_rt_config(vocab_size)
+            elif arch == "MoDA":
+                config = get_moda_config(vocab_size)
+            elif arch == "ReMoDA":
                 config = get_config(vocab_size)
 
             print(f"Initializing SequenceClassification model with {arch} config...")
@@ -205,16 +234,27 @@ def main():
     print("\n=================================================================")
     print(f"Final NLP Task Evaluation Results (Across {len(seeds)} Seeds):")
     print("-----------------------------------------------------------------")
-    print("Standard Baseline:")
-    print(f"  Mean Final Accuracy: {np.mean(results['Standard']['accs']):.4f} ± {np.std(results['Standard']['accs']):.4f}")
-    print(f"  Mean Final F1 Score: {np.mean(results['Standard']['f1s']):.4f} ± {np.std(results['Standard']['f1s']):.4f}")
-    print(f"  Mean Final Loss:     {np.mean(results['Standard']['losses']):.4f} ± {np.std(results['Standard']['losses']):.4f}")
-    print("-----------------------------------------------------------------")
-    print("ReMoDA:")
-    print(f"  Mean Final Accuracy: {np.mean(results['ReMoDA']['accs']):.4f} ± {np.std(results['ReMoDA']['accs']):.4f}")
-    print(f"  Mean Final F1 Score: {np.mean(results['ReMoDA']['f1s']):.4f} ± {np.std(results['ReMoDA']['f1s']):.4f}")
-    print(f"  Mean Final Loss:     {np.mean(results['ReMoDA']['losses']):.4f} ± {np.std(results['ReMoDA']['losses']):.4f}")
+    for arch in architectures:
+        print(f"{arch} Architecture:")
+        print(f"  Mean Final Accuracy: {np.mean(results[arch]['accs']):.4f} ± {np.std(results[arch]['accs']):.4f}")
+        print(f"  Mean Final F1 Score: {np.mean(results[arch]['f1s']):.4f} ± {np.std(results[arch]['f1s']):.4f}")
+        print(f"  Mean Final Loss:     {np.mean(results[arch]['losses']):.4f} ± {np.std(results[arch]['losses']):.4f}")
+        print("-----------------------------------------------------------------")
     print("=================================================================")
+
+    # Plot Demonstrability Chart
+    means = [np.mean(results[arch]['f1s']) for arch in architectures]
+    stds = [np.std(results[arch]['f1s']) for arch in architectures]
+
+    plt.figure(figsize=(8, 6))
+    x_pos = np.arange(len(architectures))
+    plt.bar(x_pos, means, yerr=stds, align='center', alpha=0.7, ecolor='black', capsize=10, color=['blue', 'orange', 'green', 'red'])
+    plt.ylabel('F1 Score')
+    plt.xticks(x_pos, architectures)
+    plt.title('NLP Task Evaluation: IMDb Classification')
+    plt.tight_layout()
+    plt.savefig('nlp_results.png')
+    print("\nSaved NLP evaluation chart to 'nlp_results.png'.")
 
 if __name__ == "__main__":
     main()

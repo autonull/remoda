@@ -5,7 +5,8 @@ from tqdm import tqdm
 import math
 import time
 
-from model import ReMoDAConfig, ReMoDAModel
+from config import ReMoDAConfig
+from model import ReMoDAModel
 from data import get_dataloaders
 
 # Training Hyperparameters

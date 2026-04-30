@@ -2,7 +2,8 @@ import torch
 import time
 import os
 import gc
-from model import ReMoDAConfig, ReMoDAModel
+from config import ReMoDAConfig
+from model import ReMoDAModel
 
 def get_config(arch_type: str, vocab_size: int, seq_len: int) -> ReMoDAConfig:
     base = ReMoDAConfig(

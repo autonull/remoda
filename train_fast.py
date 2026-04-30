@@ -5,6 +5,7 @@ from tqdm import tqdm
 import math
 import time
 import os
+import numpy as np
 
 from config import ReMoDAConfig
 from model import ReMoDAModel
@@ -18,6 +19,13 @@ LEARNING_RATE = 1e-3
 MAX_STEPS = 50
 EVAL_STEPS = 25
 EVAL_ITERS = 5
+SEEDS = [42, 100, 1234]
+
+def set_seed(seed):
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 def get_config(arch_type: str) -> ReMoDAConfig:
     base = ReMoDAConfig(
@@ -66,13 +74,13 @@ def evaluate(model):
     avg_loss = sum(losses) / len(losses)
     return avg_loss, math.exp(avg_loss)
 
-def train_model(arch_type: str):
-    print(f"\n{'='*50}\nTraining Architecture: {arch_type}\n{'='*50}")
+def train_model(arch_type: str, seed: int):
+    set_seed(seed)
+    # print(f"\nTraining Architecture: {arch_type} | Seed: {seed}")
 
     config = get_config(arch_type)
     model = ReMoDAModel(config).to('cpu')
     num_params = sum(p.numel() for p in model.parameters())
-    print(f"Model parameters: {num_params / 1e6:.2f} M")
 
     optimizer = optim.AdamW(model.parameters(), lr=LEARNING_RATE)
     start_time = time.time()
@@ -94,7 +102,7 @@ def train_model(arch_type: str):
             val_loss, val_ppl = evaluate(model)
             elapsed = time.time() - start_time
             tps = total_tokens / elapsed if elapsed > 0 else 0
-            print(f"Step {step:04d} | Train Loss: {loss.item():.4f} | Val Loss: {val_loss:.4f} | Val PPL: {val_ppl:.2f} | Tokens/sec: {tps:.2f}")
+            # print(f"Step {step:04d} | Train Loss: {loss.item():.4f} | Val Loss: {val_loss:.4f} | Val PPL: {val_ppl:.2f} | Tokens/sec: {tps:.2f}")
             results.append((step, val_loss, val_ppl))
 
     return results, num_params
@@ -104,38 +112,65 @@ def main():
 
     architectures = ["Standard", "RT", "MoDA", "ReMoDA"]
     final_results = {}
-    all_learning_curves = {}
+    all_learning_curves_mean = {}
+    all_learning_curves_std = {}
+    all_steps = []
+
+    print(f"\n{'='*50}\nStarting multi-seed training (Seeds: {SEEDS})\n{'='*50}")
 
     for arch in architectures:
-        results, params = train_model(arch)
+        print(f"Training Architecture: {arch}...")
+        arch_results = []
+        params = 0
 
-        # Save learning curve data
-        steps = [r[0] for r in results]
-        val_losses = [r[1] for r in results]
-        all_learning_curves[arch] = (steps, val_losses)
+        for seed in SEEDS:
+            results, params = train_model(arch, seed)
+            arch_results.append(results)
 
-        final_ppl = results[-1][2]
+        # Ensure all steps are the same
+        steps = [r[0] for r in arch_results[0]]
+        all_steps = steps
+
+        # Aggregate results across seeds
+        val_losses_across_seeds = [[r[1] for r in seed_res] for seed_res in arch_results]
+        val_losses_mean = np.mean(val_losses_across_seeds, axis=0)
+        val_losses_std = np.std(val_losses_across_seeds, axis=0)
+
+        all_learning_curves_mean[arch] = val_losses_mean
+        all_learning_curves_std[arch] = val_losses_std
+
+        # Final PPL across seeds
+        final_ppls = [seed_res[-1][2] for seed_res in arch_results]
+        final_ppl_mean = np.mean(final_ppls)
+        final_ppl_std = np.std(final_ppls)
+
         final_results[arch] = {
             "params": f"{params / 1e6:.4f}M",
-            "final_val_ppl": final_ppl
+            "final_val_ppl_mean": final_ppl_mean,
+            "final_val_ppl_std": final_ppl_std
         }
 
-    print(f"\n\n{'='*60}")
-    print("FINAL ABLATION RESULTS (CPU Sandbox Run)")
-    print(f"{'='*60}")
-    print(f"{'Architecture':<15} | {'Params':<10} | {'Final Val PPL':<15}")
-    print(f"{'-'*60}")
+    print(f"\n\n{'='*80}")
+    print("FINAL ABLATION RESULTS (CPU Sandbox Run with Multi-Seed Aggregation)")
+    print(f"{'='*80}")
+    print(f"{'Architecture':<15} | {'Params':<10} | {'Final Val PPL (Mean ± Std)':<30}")
+    print(f"{'-'*80}")
     for arch in architectures:
         res = final_results[arch]
-        print(f"{arch:<15} | {res['params']:<10} | {res['final_val_ppl']:.2f}")
-    print(f"{'='*60}")
+        print(f"{arch:<15} | {res['params']:<10} | {res['final_val_ppl_mean']:.2f} ± {res['final_val_ppl_std']:.2f}")
+    print(f"{'='*80}")
 
     # Plot learning curves
     plt.figure(figsize=(10, 6))
-    for arch, (steps, val_losses) in all_learning_curves.items():
-        plt.plot(steps, val_losses, marker='o', label=arch)
+    for arch in architectures:
+        mean_losses = all_learning_curves_mean[arch]
+        std_losses = all_learning_curves_std[arch]
 
-    plt.title("Validation Loss during Training (ReMoDA vs. Baselines)")
+        p = plt.plot(all_steps, mean_losses, marker='o', label=arch)
+        color = p[0].get_color()
+        plt.fill_between(all_steps, mean_losses - std_losses, mean_losses + std_losses, color=color, alpha=0.2)
+
+    plt.title("Validation Loss during Training (ReMoDA vs. Baselines) - Multi-Seed")
     plt.xlabel("Training Steps")
     plt.ylabel("Validation Loss")
     plt.legend()

@@ -152,10 +152,35 @@ def train_dt(model, optimizer, trajectories, epochs=100, steps_per_epoch=20):
 
     print(f"Training completed in {time.time() - start_time:.2f}s")
 
+def evaluate_baseline_random(env):
+    """Evaluates a purely random policy as a baseline."""
+    total_rewards = []
+    episode_lengths = []
+
+    for _ in range(10): # Evaluate for 10 episodes
+        obs, _ = env.reset()
+        done = False
+        rewards = []
+        step = 0
+
+        while not done and step < MAX_STEPS:
+            action = env.action_space.sample()
+            next_obs, reward, terminated, truncated, _ = env.step(action)
+            done = terminated or truncated
+            rewards.append(reward)
+            obs = next_obs
+            step += 1
+
+        total_rewards.append(sum(rewards))
+        episode_lengths.append(step)
+
+    return np.mean(total_rewards), np.mean(episode_lengths)
+
 def evaluate_dt(model, env, target_return=200):
     model.eval()
 
     total_rewards = []
+    episode_lengths = []
 
     for _ in range(10): # Evaluate for 10 episodes
         obs, _ = env.reset()
@@ -220,15 +245,18 @@ def evaluate_dt(model, env, target_return=200):
                 step += 1
 
         total_rewards.append(sum(rewards))
+        episode_lengths.append(step)
 
-    print(f"Average Evaluation Reward: {np.mean(total_rewards):.2f}")
-    return np.mean(total_rewards)
+    return np.mean(total_rewards), np.mean(episode_lengths)
 
 def main():
     seeds = [42, 100, 1234]
     print(f"Running RL Evaluation over seeds: {seeds}")
 
-    all_rewards = []
+    all_dt_rewards = []
+    all_dt_lengths = []
+    all_random_rewards = []
+    all_random_lengths = []
 
     for seed in seeds:
         print(f"\n--- Running Seed: {seed} ---")
@@ -248,6 +276,12 @@ def main():
         state_dim = env.observation_space.shape[0]
         action_dim = env.action_space.n
 
+        print("Evaluating Random Baseline Policy...")
+        random_reward, random_length = evaluate_baseline_random(env)
+        all_random_rewards.append(random_reward)
+        all_random_lengths.append(random_length)
+        print(f"Random Baseline -> Avg Reward: {random_reward:.2f} | Avg Ep Length: {random_length:.2f}")
+
         print("Generating Offline Data...")
         trajectories = generate_random_rollouts(env, EPISODES)
         print(f"Generated {len(trajectories)} trajectories.")
@@ -264,14 +298,22 @@ def main():
         print("Evaluating ReMoDA-DT...")
         # Note: Since the data is random rollouts, it might not learn an optimal policy,
         # but this verifies the architecture can process the interleaved sequence and learn.
-        reward = evaluate_dt(model, env)
-        all_rewards.append(reward)
+        dt_reward, dt_length = evaluate_dt(model, env)
+        all_dt_rewards.append(dt_reward)
+        all_dt_lengths.append(dt_length)
+        print(f"ReMoDA-DT -> Avg Reward: {dt_reward:.2f} | Avg Ep Length: {dt_length:.2f}")
 
-    print("\n==================================================")
+    print("\n=================================================================")
     print(f"Final RL Task Evaluation Results (Across {len(seeds)} Seeds):")
-    print(f"Mean Reward: {np.mean(all_rewards):.2f}")
-    print(f"Std Reward:  {np.std(all_rewards):.2f}")
-    print("==================================================")
+    print("-----------------------------------------------------------------")
+    print(f"Random Baseline:")
+    print(f"  Mean Reward:     {np.mean(all_random_rewards):.2f} ± {np.std(all_random_rewards):.2f}")
+    print(f"  Mean Ep Length:  {np.mean(all_random_lengths):.2f} ± {np.std(all_random_lengths):.2f}")
+    print("-----------------------------------------------------------------")
+    print(f"ReMoDA-DT:")
+    print(f"  Mean Reward:     {np.mean(all_dt_rewards):.2f} ± {np.std(all_dt_rewards):.2f}")
+    print(f"  Mean Ep Length:  {np.mean(all_dt_lengths):.2f} ± {np.std(all_dt_lengths):.2f}")
+    print("=================================================================")
 
 if __name__ == "__main__":
     main()

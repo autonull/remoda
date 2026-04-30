@@ -3,8 +3,11 @@ import time
 import os
 import gc
 import psutil
+import numpy as np
 from config import ReMoDAConfig
 from model import ReMoDAModel
+
+NUM_TRIALS = 5
 
 def get_config(arch_type: str, vocab_size: int, seq_len: int) -> ReMoDAConfig:
     base = ReMoDAConfig(
@@ -37,33 +40,48 @@ def benchmark_architecture(arch: str, batch_size: int, seq_len: int, vocab_size:
     model = ReMoDAModel(config)
     model.eval()
 
-    x = torch.randint(0, vocab_size, (batch_size, seq_len))
-
-    # Warmup
-    for _ in range(5):
-        _ = model(x)
-
-    start_time = time.time()
-    with torch.no_grad():
-        for _ in range(50):
-            _ = model(x)
-    end_time = time.time()
-
-    total_time = end_time - start_time
-    passes = 50
-    latency = total_time / passes
-    throughput = (batch_size * seq_len * passes) / total_time
     num_params = sum(p.numel() for p in model.parameters())
 
-    process = psutil.Process(os.getpid())
-    memory_info = process.memory_info()
-    memory_mb = memory_info.rss / (1024 * 1024)
+    latencies = []
+    throughputs = []
+    memories = []
+
+    for trial in range(NUM_TRIALS):
+        # Clear memory between trials
+        gc.collect()
+
+        x = torch.randint(0, vocab_size, (batch_size, seq_len))
+
+        # Warmup
+        for _ in range(5):
+            _ = model(x)
+
+        start_time = time.time()
+        with torch.no_grad():
+            for _ in range(50):
+                _ = model(x)
+        end_time = time.time()
+
+        total_time = end_time - start_time
+        passes = 50
+        latency = total_time / passes
+        throughput = (batch_size * seq_len * passes) / total_time
+
+        process = psutil.Process(os.getpid())
+        memory_info = process.memory_info()
+        memory_mb = memory_info.rss / (1024 * 1024)
+
+        latencies.append(latency * 1000)
+        throughputs.append(throughput)
+        memories.append(memory_mb)
 
     return {
         "Params (M)": f"{num_params/1e6:.2f}M",
-        "Latency (ms)": latency * 1000,
-        "Throughput (tok/s)": throughput,
-        "Memory (MB)": memory_mb
+        "Latency Mean (ms)": np.mean(latencies),
+        "Latency Std (ms)": np.std(latencies),
+        "Throughput Mean (tok/s)": np.mean(throughputs),
+        "Throughput Std (tok/s)": np.std(throughputs),
+        "Memory Mean (MB)": np.mean(memories)
     }
 
 def main():
@@ -73,26 +91,29 @@ def main():
         {"batch_size": 16, "seq_len": 512, "vocab_size": 1000},
     ]
 
-    print(f"Benchmarking ReMoDA vs Standard Transformer")
-    print("=" * 80)
+    print(f"Benchmarking ReMoDA vs Standard Transformer (Aggregated over {NUM_TRIALS} trials)")
+    print("=" * 115)
 
     for test_config in configs_to_test:
         bs = test_config['batch_size']
         sl = test_config['seq_len']
         vs = test_config['vocab_size']
         print(f"Batch Size: {bs}, Seq Len: {sl}, Vocab: {vs}")
-        print("-" * 80)
+        print("-" * 115)
 
         results = {}
         for arch in ["Standard", "ReMoDA"]:
             res = benchmark_architecture(arch, bs, sl, vs)
             results[arch] = res
 
-        print(f"{'Architecture':<15} | {'Params':<10} | {'Latency':<15} | {'Throughput (tok/s)':<20} | {'Memory (MB)':<12}")
-        print("-" * 100)
+        print(f"{'Architecture':<15} | {'Params':<10} | {'Latency (ms)':<25} | {'Throughput (tok/s)':<30} | {'Memory (MB)':<15}")
+        print("-" * 115)
         for arch, res in results.items():
-            print(f"{arch:<15} | {res['Params (M)']:<10} | {res['Latency (ms)']:.2f}ms         | {res['Throughput (tok/s)']:<20.2f} | {res['Memory (MB)']:.2f}MB")
-        print("=" * 100)
+            latency_str = f"{res['Latency Mean (ms)']:.2f} ± {res['Latency Std (ms)']:.2f}"
+            throughput_str = f"{res['Throughput Mean (tok/s)']:.2f} ± {res['Throughput Std (tok/s)']:.2f}"
+            memory_str = f"{res['Memory Mean (MB)']:.2f}"
+            print(f"{arch:<15} | {res['Params (M)']:<10} | {latency_str:<25} | {throughput_str:<30} | {memory_str:<15}")
+        print("=" * 115)
 
 if __name__ == "__main__":
     main()

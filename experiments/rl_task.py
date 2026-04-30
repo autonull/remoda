@@ -225,28 +225,53 @@ def evaluate_dt(model, env, target_return=200):
     return np.mean(total_rewards)
 
 def main():
-    print("Initializing CartPole Environment...")
-    env = gym.make("CartPole-v1")
-    state_dim = env.observation_space.shape[0]
-    action_dim = env.action_space.n
+    seeds = [42, 100, 1234]
+    print(f"Running RL Evaluation over seeds: {seeds}")
 
-    print("Generating Offline Data...")
-    trajectories = generate_random_rollouts(env, EPISODES)
-    print(f"Generated {len(trajectories)} trajectories.")
+    all_rewards = []
 
-    config = get_dt_config()
-    print("Initializing ReMoDA Decision Transformer...")
-    model = ReMoDADecisionTransformer(config, state_dim, action_dim)
+    for seed in seeds:
+        print(f"\n--- Running Seed: {seed} ---")
 
-    optimizer = optim.AdamW(model.parameters(), lr=1e-3)
+        # Set seeds for reproducibility
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
 
-    print("Training ReMoDA-DT on Offline Data...")
-    train_dt(model, optimizer, trajectories, epochs=100)
+        print("Initializing CartPole Environment...")
+        env = gym.make("CartPole-v1")
+        # Ensure environment operations using random have seed set
+        env.action_space.seed(seed)
+        env.observation_space.seed(seed)
 
-    print("Evaluating ReMoDA-DT...")
-    # Note: Since the data is random rollouts, it might not learn an optimal policy,
-    # but this verifies the architecture can process the interleaved sequence and learn.
-    evaluate_dt(model, env)
+        state_dim = env.observation_space.shape[0]
+        action_dim = env.action_space.n
+
+        print("Generating Offline Data...")
+        trajectories = generate_random_rollouts(env, EPISODES)
+        print(f"Generated {len(trajectories)} trajectories.")
+
+        config = get_dt_config()
+        print("Initializing ReMoDA Decision Transformer...")
+        model = ReMoDADecisionTransformer(config, state_dim, action_dim)
+
+        optimizer = optim.AdamW(model.parameters(), lr=1e-3)
+
+        print("Training ReMoDA-DT on Offline Data...")
+        train_dt(model, optimizer, trajectories, epochs=100)
+
+        print("Evaluating ReMoDA-DT...")
+        # Note: Since the data is random rollouts, it might not learn an optimal policy,
+        # but this verifies the architecture can process the interleaved sequence and learn.
+        reward = evaluate_dt(model, env)
+        all_rewards.append(reward)
+
+    print("\n==================================================")
+    print(f"Final RL Task Evaluation Results (Across {len(seeds)} Seeds):")
+    print(f"Mean Reward: {np.mean(all_rewards):.2f}")
+    print(f"Std Reward:  {np.std(all_rewards):.2f}")
+    print("==================================================")
 
 if __name__ == "__main__":
     main()

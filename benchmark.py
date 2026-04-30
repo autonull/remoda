@@ -22,6 +22,15 @@ def get_config(arch_type: str, vocab_size: int, seq_len: int) -> ReMoDAConfig:
         base.num_hidden_layers = 4
         base.use_rt_kv = False
         base.use_moda = False
+    elif arch_type == "RT":
+        base.num_hidden_layers = 2
+        base.use_rt_kv = True
+        base.use_moda = False
+    elif arch_type == "MoDA":
+        base.num_hidden_layers = 4
+        base.use_rt_kv = False
+        base.use_moda = True
+        base.depth_slots = 2
     elif arch_type == "ReMoDA":
         base.num_hidden_layers = 2
         base.use_rt_kv = True
@@ -56,14 +65,14 @@ def benchmark_architecture(arch: str, batch_size: int, seq_len: int, vocab_size:
         for _ in range(5):
             _ = model(x)
 
+        passes = 10 if batch_size > 8 else 20
         start_time = time.time()
         with torch.no_grad():
-            for _ in range(50):
+            for _ in range(passes):
                 _ = model(x)
         end_time = time.time()
 
         total_time = end_time - start_time
-        passes = 50
         latency = total_time / passes
         throughput = (batch_size * seq_len * passes) / total_time
 
@@ -94,6 +103,8 @@ def main():
     print(f"Benchmarking ReMoDA vs Standard Transformer (Aggregated over {NUM_TRIALS} trials)")
     print("=" * 115)
 
+    architectures = ["Standard", "RT", "MoDA", "ReMoDA"]
+
     for test_config in configs_to_test:
         bs = test_config['batch_size']
         sl = test_config['seq_len']
@@ -102,7 +113,7 @@ def main():
         print("-" * 115)
 
         results = {}
-        for arch in ["Standard", "ReMoDA"]:
+        for arch in architectures:
             res = benchmark_architecture(arch, bs, sl, vs)
             results[arch] = res
 

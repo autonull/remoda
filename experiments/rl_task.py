@@ -27,13 +27,38 @@ def get_standard_dt_config():
         use_moda=False
     )
 
+def get_rt_dt_config():
+    return ReMoDAConfig(
+        vocab_size=1,
+        hidden_size=64,
+        num_hidden_layers=1,
+        num_attention_heads=2,
+        intermediate_size=128,
+        max_position_embeddings=MAX_STEPS + 1,
+        use_rt_kv=True,
+        use_moda=False
+    )
+
+def get_moda_dt_config():
+    return ReMoDAConfig(
+        vocab_size=1,
+        hidden_size=64,
+        num_hidden_layers=2,
+        num_attention_heads=2,
+        intermediate_size=128,
+        max_position_embeddings=MAX_STEPS + 1,
+        use_rt_kv=False,
+        use_moda=True,
+        depth_slots=2
+    )
+
 def get_dt_config():
     # Since DT interleaves (R, s, a), the actual sequence length processed
     # by the transformer is 3 * SEQ_LEN. We need to account for this in max_position_embeddings.
     return ReMoDAConfig(
         vocab_size=1, # Unused
         hidden_size=64,
-        num_hidden_layers=2,
+        num_hidden_layers=1,
         num_attention_heads=2,
         intermediate_size=128,
         max_position_embeddings=MAX_STEPS + 1, # Max timestep is MAX_STEPS
@@ -263,14 +288,17 @@ def evaluate_dt(model, env, target_return=200):
     return np.mean(total_rewards), np.mean(episode_lengths)
 
 def main():
+    import matplotlib.pyplot as plt
+
     seeds = [42, 100, 1234]
     print(f"Running RL Evaluation over seeds: {seeds}")
 
+    architectures = ["Standard-DT", "RT-DT", "MoDA-DT", "ReMoDA-DT"]
     results = {
-        "Random": {"rewards": [], "lengths": []},
-        "Standard-DT": {"rewards": [], "lengths": []},
-        "ReMoDA-DT": {"rewards": [], "lengths": []}
+        "Random": {"rewards": [], "lengths": []}
     }
+    for arch in architectures:
+        results[arch] = {"rewards": [], "lengths": []}
 
     for seed in seeds:
         print(f"\n--- Running Seed: {seed} ---")
@@ -300,7 +328,7 @@ def main():
         trajectories = generate_random_rollouts(env, EPISODES)
         print(f"Generated {len(trajectories)} trajectories.")
 
-        for arch in ["Standard-DT", "ReMoDA-DT"]:
+        for arch in architectures:
             print(f"\n[Evaluating Architecture: {arch}]")
 
             # Reset seeds for consistency between architecture runs
@@ -311,7 +339,11 @@ def main():
 
             if arch == "Standard-DT":
                 config = get_standard_dt_config()
-            else:
+            elif arch == "RT-DT":
+                config = get_rt_dt_config()
+            elif arch == "MoDA-DT":
+                config = get_moda_dt_config()
+            elif arch == "ReMoDA-DT":
                 config = get_dt_config()
 
             print(f"Initializing {arch} Decision Transformer...")
@@ -335,14 +367,27 @@ def main():
     print(f"  Mean Reward:     {np.mean(results['Random']['rewards']):.2f} ± {np.std(results['Random']['rewards']):.2f}")
     print(f"  Mean Ep Length:  {np.mean(results['Random']['lengths']):.2f} ± {np.std(results['Random']['lengths']):.2f}")
     print("-----------------------------------------------------------------")
-    print(f"Standard-DT Baseline:")
-    print(f"  Mean Reward:     {np.mean(results['Standard-DT']['rewards']):.2f} ± {np.std(results['Standard-DT']['rewards']):.2f}")
-    print(f"  Mean Ep Length:  {np.mean(results['Standard-DT']['lengths']):.2f} ± {np.std(results['Standard-DT']['lengths']):.2f}")
-    print("-----------------------------------------------------------------")
-    print(f"ReMoDA-DT:")
-    print(f"  Mean Reward:     {np.mean(results['ReMoDA-DT']['rewards']):.2f} ± {np.std(results['ReMoDA-DT']['rewards']):.2f}")
-    print(f"  Mean Ep Length:  {np.mean(results['ReMoDA-DT']['lengths']):.2f} ± {np.std(results['ReMoDA-DT']['lengths']):.2f}")
+    for arch in architectures:
+        print(f"{arch}:")
+        print(f"  Mean Reward:     {np.mean(results[arch]['rewards']):.2f} ± {np.std(results[arch]['rewards']):.2f}")
+        print(f"  Mean Ep Length:  {np.mean(results[arch]['lengths']):.2f} ± {np.std(results[arch]['lengths']):.2f}")
+        print("-----------------------------------------------------------------")
     print("=================================================================")
+
+    # Plot Demonstrability Chart
+    all_archs = ["Random"] + architectures
+    means = [np.mean(results[arch]['rewards']) for arch in all_archs]
+    stds = [np.std(results[arch]['rewards']) for arch in all_archs]
+
+    plt.figure(figsize=(10, 6))
+    x_pos = np.arange(len(all_archs))
+    plt.bar(x_pos, means, yerr=stds, align='center', alpha=0.7, ecolor='black', capsize=10, color=['gray', 'blue', 'orange', 'green', 'red'])
+    plt.ylabel('Mean Reward')
+    plt.xticks(x_pos, all_archs)
+    plt.title('RL Task Evaluation: CartPole Decision Transformer')
+    plt.tight_layout()
+    plt.savefig('rl_results.png')
+    print("\nSaved RL evaluation chart to 'rl_results.png'.")
 
 if __name__ == "__main__":
     main()

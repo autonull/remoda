@@ -90,7 +90,7 @@ python train_fast.py
 
 5. **Evaluate Unified Framework:**
 Run tests across RL (Decision Transformer on CartPole) and NLP (Sequence Classification on IMDb) tasks. 🏆
-These experiments now evaluate both the **Standard** baseline and the **ReMoDA** architectures side-by-side! This rigorous multi-seed comparison clearly demonstrates ReMoDA's immense value—achieving similar or superior performance while being massively parameter-efficient! 🤯⚖️
+These experiments now rigorously evaluate all four architectures (**Standard**, **RT**, **MoDA**, and **ReMoDA**) side-by-side across multiple seeds! This massive evaluation clearly demonstrates ReMoDA's immense value—achieving similar or superior performance while being massively parameter-efficient! 🤯⚖️ It also outputs nice visual bar charts `nlp_results.png` and `rl_results.png`!
 ```bash
 python evaluate_all.py
 ```

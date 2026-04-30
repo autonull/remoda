@@ -45,21 +45,30 @@ def unified_attention_reference(
     # 1. Any query to attend to any depth KV token (fully visible)
     # 2. Query at pos `i` to attend to seq KV token `j` only if `j <= i` (causal)
 
-    mask = torch.zeros((seq_len, depth_len + seq_len), dtype=torch.bool, device=q.device)
+    # Performance enhancement: cache the mask
+    global _mask_cache
+    if '_mask_cache' not in globals():
+        _mask_cache = {}
 
-    if causal:
-        seq_mask = torch.tril(torch.ones((seq_len, seq_len), dtype=torch.bool, device=q.device))
-        num_slots = depth_len // seq_len
-        for s in range(num_slots):
-            mask[:, s * seq_len : (s + 1) * seq_len] = seq_mask
-        mask[:, depth_len:] = seq_mask
-    else:
-        # Depth and sequence parts are fully visible
-        mask[:, :] = True
+    cache_key = (seq_len, depth_len, causal, q.device)
+    if cache_key not in _mask_cache:
+        mask = torch.zeros((seq_len, depth_len + seq_len), dtype=torch.bool, device=q.device)
 
-    # SDPA expects a boolean mask of shape (batch, num_heads, seq_len, depth_len + seq_len)
-    # or just broadcastable to it, so we can reshape to (1, 1, seq_len, depth_len + seq_len)
-    mask = mask.view(1, 1, seq_len, depth_len + seq_len)
+        if causal:
+            seq_mask = torch.tril(torch.ones((seq_len, seq_len), dtype=torch.bool, device=q.device))
+            num_slots = depth_len // seq_len
+            for s in range(num_slots):
+                mask[:, s * seq_len : (s + 1) * seq_len] = seq_mask
+            mask[:, depth_len:] = seq_mask
+        else:
+            # Depth and sequence parts are fully visible
+            mask[:, :] = True
+
+        # SDPA expects a boolean mask of shape (batch, num_heads, seq_len, depth_len + seq_len)
+        # or just broadcastable to it, so we can reshape to (1, 1, seq_len, depth_len + seq_len)
+        _mask_cache[cache_key] = mask.view(1, 1, seq_len, depth_len + seq_len)
+
+    mask = _mask_cache[cache_key]
 
     # Run scaled dot product attention
     out = F.scaled_dot_product_attention(

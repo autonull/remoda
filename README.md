@@ -8,6 +8,7 @@ ReMoDA is all about achieving **parameter efficiency** without sacrificing the m
 
 - 🔄 **Recurrent Memory Transformer (RMT):** Inspired by Recurrent Memory mechanisms, ReMoDA retains memory across steps using persistent KV states. This allows the model to achieve a temporally deeper structure while keeping the actual layer count (and parameters) low! [Read more about RMT here.](https://arxiv.org/abs/2207.06881)
 - 🕳️ **Mixture-of-Depths (MoD):** Inspired by Mixture-of-Depths, ReMoDA uses cross-layer depth retrieval. It can selectively route and attend to historical layers (depth slots), allowing for dynamic compute allocation. [Read more about MoD here.](https://arxiv.org/abs/2404.02258)
+- 🎲 **Last-N + Random-1 Depth Policy:** ReMoDA now supports a powerful new depth selection policy! By retrieving the last `n` continuous layers plus *one random distant historical layer*, the model gains an expansive context window and beautifully mitigates vanishing gradients for very deep architectures! 🌟
 
 By fusing these, ReMoDA can process standard sequence tasks **much faster** (higher throughput) and with **lower latency** than a standard transformer of similar effective depth.
 

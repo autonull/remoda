@@ -1,6 +1,26 @@
 import torch
 import torch.nn.functional as F
 
+import functools
+
+@functools.lru_cache(maxsize=32)
+def _get_mask(seq_len_cache, depth_len_cache, causal_cache, device_cache):
+    mask = torch.zeros((seq_len_cache, depth_len_cache + seq_len_cache), dtype=torch.bool, device=device_cache)
+
+    if causal_cache:
+        seq_mask = torch.tril(torch.ones((seq_len_cache, seq_len_cache), dtype=torch.bool, device=device_cache))
+        # Depth part is fully visible
+        mask[:, :depth_len_cache] = True
+        # Sequence part is causal
+        mask[:, depth_len_cache:] = seq_mask
+    else:
+        # Depth and sequence parts are fully visible
+        mask[:, :] = True
+
+    # SDPA expects a boolean mask of shape (batch, num_heads, seq_len, depth_len + seq_len)
+    # or just broadcastable to it, so we can reshape to (1, 1, seq_len, depth_len + seq_len)
+    return mask.view(1, 1, seq_len_cache, depth_len_cache + seq_len_cache)
+
 def unified_attention_reference(
     q: torch.Tensor,
     seq_k: torch.Tensor,
@@ -45,30 +65,7 @@ def unified_attention_reference(
     # 1. Any query to attend to any depth KV token (fully visible)
     # 2. Query at pos `i` to attend to seq KV token `j` only if `j <= i` (causal)
 
-    # Performance enhancement: cache the mask
-    global _mask_cache
-    if '_mask_cache' not in globals():
-        _mask_cache = {}
-
-    cache_key = (seq_len, depth_len, causal, q.device)
-    if cache_key not in _mask_cache:
-        mask = torch.zeros((seq_len, depth_len + seq_len), dtype=torch.bool, device=q.device)
-
-        if causal:
-            seq_mask = torch.tril(torch.ones((seq_len, seq_len), dtype=torch.bool, device=q.device))
-            # Depth part is fully visible
-            mask[:, :depth_len] = True
-            # Sequence part is causal
-            mask[:, depth_len:] = seq_mask
-        else:
-            # Depth and sequence parts are fully visible
-            mask[:, :] = True
-
-        # SDPA expects a boolean mask of shape (batch, num_heads, seq_len, depth_len + seq_len)
-        # or just broadcastable to it, so we can reshape to (1, 1, seq_len, depth_len + seq_len)
-        _mask_cache[cache_key] = mask.view(1, 1, seq_len, depth_len + seq_len)
-
-    mask = _mask_cache[cache_key]
+    mask = _get_mask(seq_len, depth_len, causal, q.device)
 
     # Run scaled dot product attention
     out = F.scaled_dot_product_attention(

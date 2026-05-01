@@ -256,12 +256,18 @@ def main():
 
     plt.figure(figsize=(8, 6))
     x_pos = np.arange(len(architectures))
-    plt.bar(x_pos, means, yerr=stds, align='center', alpha=0.7, ecolor='black', capsize=10, color=['blue', 'orange', 'green', 'red'])
+    bars = plt.bar(x_pos, means, yerr=stds, align='center', alpha=0.7, ecolor='black', capsize=10, color=['blue', 'orange', 'green', 'red'])
+
+    # Add text annotations above each bar
+    for i, bar in enumerate(bars):
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2.0, yval + stds[i] + 0.01, f'{yval:.3f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+
     plt.ylabel('F1 Score')
     plt.xticks(x_pos, architectures)
     plt.title('NLP Task Evaluation: IMDb Classification')
     plt.tight_layout()
-    plt.savefig('nlp_results.png')
+    plt.savefig('nlp_results.png', dpi=300)
     print("\nSaved NLP evaluation chart to 'nlp_results.png'.")
 
 if __name__ == "__main__":

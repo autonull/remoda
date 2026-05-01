@@ -389,12 +389,18 @@ def main():
 
     plt.figure(figsize=(10, 6))
     x_pos = np.arange(len(all_archs))
-    plt.bar(x_pos, means, yerr=stds, align='center', alpha=0.7, ecolor='black', capsize=10, color=['gray', 'blue', 'orange', 'green', 'red'])
+    bars = plt.bar(x_pos, means, yerr=stds, align='center', alpha=0.7, ecolor='black', capsize=10, color=['gray', 'blue', 'orange', 'green', 'red'])
+
+    # Add text annotations above each bar
+    for i, bar in enumerate(bars):
+        yval = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width()/2.0, yval + stds[i] + 1.0, f'{yval:.1f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
+
     plt.ylabel('Mean Reward')
     plt.xticks(x_pos, all_archs)
     plt.title('RL Task Evaluation: CartPole Decision Transformer')
     plt.tight_layout()
-    plt.savefig('rl_results.png')
+    plt.savefig('rl_results.png', dpi=300)
     print("\nSaved RL evaluation chart to 'rl_results.png'.")
 
 if __name__ == "__main__":

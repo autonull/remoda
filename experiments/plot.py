@@ -18,7 +18,7 @@ def smooth(scalars, weight=0.9):
         last = smoothed_val
     return smoothed
 
-def run_experiment(env_name, num_episodes=500):
+def run_experiment(env_name, num_episodes=500, seeds=[42, 100, 1234]):
     if env_name == "tmaze":
         env_cls = TMazeEnv
         env_kwargs = {'n_rooms': 15}
@@ -32,27 +32,39 @@ def run_experiment(env_name, num_episodes=500):
     else:
         raise ValueError("Unknown env")
 
-    print(f"--- Running {env_name} with Baseline ---")
-    baseline_rewards = train_actor_critic(
-        env_cls=env_cls,
-        env_kwargs=env_kwargs,
-        model_cls=BaselineActorCritic,
-        model_kwargs={'obs_dim': obs_dim, 'act_dim': act_dim, 'hidden_dim': 64},
-        is_pgra=False,
-        num_episodes=num_episodes
-    )
+    all_baseline_rewards = []
+    all_pgra_rewards = []
 
-    print(f"--- Running {env_name} with PGRA ---")
-    pgra_rewards = train_actor_critic(
-        env_cls=env_cls,
-        env_kwargs=env_kwargs,
-        model_cls=PGRAActorCritic,
-        model_kwargs={'obs_dim': obs_dim, 'act_dim': act_dim, 'hidden_dim': 64},
-        is_pgra=True,
-        num_episodes=num_episodes
-    )
+    for seed in seeds:
+        import torch
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
 
-    return baseline_rewards, pgra_rewards
+        print(f"--- Running {env_name} with Baseline (Seed: {seed}) ---")
+        baseline_rewards = train_actor_critic(
+            env_cls=env_cls,
+            env_kwargs=env_kwargs,
+            model_cls=BaselineActorCritic,
+            model_kwargs={'obs_dim': obs_dim, 'act_dim': act_dim, 'hidden_dim': 64},
+            is_pgra=False,
+            num_episodes=num_episodes
+        )
+        all_baseline_rewards.append(baseline_rewards)
+
+        print(f"--- Running {env_name} with PGRA (Seed: {seed}) ---")
+        pgra_rewards = train_actor_critic(
+            env_cls=env_cls,
+            env_kwargs=env_kwargs,
+            model_cls=PGRAActorCritic,
+            model_kwargs={'obs_dim': obs_dim, 'act_dim': act_dim, 'hidden_dim': 64},
+            is_pgra=True,
+            num_episodes=num_episodes
+        )
+        all_pgra_rewards.append(pgra_rewards)
+
+    return np.array(all_baseline_rewards), np.array(all_pgra_rewards)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -67,12 +79,22 @@ def main():
     for env_name in envs_to_run:
         b_rewards, p_rewards = run_experiment(env_name, num_episodes=args.episodes)
 
-        plt.figure(figsize=(10, 6))
-        plt.plot(b_rewards, alpha=0.3, color='blue')
-        plt.plot(smooth(b_rewards), color='blue', label='Baseline (LSTM)')
+        b_mean = np.mean(b_rewards, axis=0)
+        b_std = np.std(b_rewards, axis=0)
+        p_mean = np.mean(p_rewards, axis=0)
+        p_std = np.std(p_rewards, axis=0)
 
-        plt.plot(p_rewards, alpha=0.3, color='orange')
-        plt.plot(smooth(p_rewards), color='orange', label='PGRA (v2.1)')
+        plt.figure(figsize=(10, 6))
+
+        # Baseline
+        b_mean_smoothed = smooth(b_mean.tolist())
+        plt.plot(b_mean_smoothed, color='blue', label='Baseline (LSTM)')
+        plt.fill_between(range(len(b_mean_smoothed)), np.array(b_mean_smoothed) - b_std, np.array(b_mean_smoothed) + b_std, color='blue', alpha=0.2)
+
+        # PGRA
+        p_mean_smoothed = smooth(p_mean.tolist())
+        plt.plot(p_mean_smoothed, color='orange', label='PGRA (v2.1)')
+        plt.fill_between(range(len(p_mean_smoothed)), np.array(p_mean_smoothed) - p_std, np.array(p_mean_smoothed) + p_std, color='orange', alpha=0.2)
 
         plt.title(f"Learning Curve: {env_name.replace('_', ' ').title()}")
         plt.xlabel("Episode")

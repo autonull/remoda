@@ -6,8 +6,13 @@ class ReMoDAConfig:
     hidden_size: int = 256
     num_hidden_layers: int = 4
     num_attention_heads: int = 4
+    num_key_value_heads: int = None
     intermediate_size: int = 1024
     max_position_embeddings: int = 1024
+
+    def __post_init__(self):
+        if self.num_key_value_heads is None:
+            self.num_key_value_heads = self.num_attention_heads
 
     # Ablation Toggles
     use_rt_kv: bool = True               # True = ReMoDA/RT (project KV from output), False = Std Transformer (project KV from input)

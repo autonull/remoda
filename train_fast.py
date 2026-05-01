@@ -54,6 +54,12 @@ def get_config(arch_type: str) -> ReMoDAConfig:
         base.use_rt_kv = True
         base.use_moda = True
         base.depth_slots = 1
+    elif arch_type == "ReMoDA-GQA":
+        base.num_hidden_layers = 2
+        base.use_rt_kv = True
+        base.use_moda = True
+        base.depth_slots = 1
+        base.num_key_value_heads = 1
 
     return base
 
@@ -110,7 +116,7 @@ def train_model(arch_type: str, seed: int):
 def main():
     import matplotlib.pyplot as plt
 
-    architectures = ["Standard", "RT", "MoDA", "ReMoDA"]
+    architectures = ["Standard", "RT", "MoDA", "ReMoDA", "ReMoDA-GQA"]
     final_results = {}
     all_learning_curves_mean = {}
     all_learning_curves_std = {}

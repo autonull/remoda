@@ -12,8 +12,6 @@ from model import ReMoDAForSequenceClassification
 # Parameters
 BATCH_SIZE = 8
 SEQ_LEN = 128
-MAX_TRAIN_SAMPLES = 500 # Small subset for sandbox CPU
-MAX_EVAL_SAMPLES = 100
 EPOCHS = 3
 
 class ClassificationDataset(Dataset):
@@ -36,8 +34,8 @@ def get_dataloaders(seed=42):
     # Using small subset of IMDb for text classification
     dataset = load_dataset("imdb")
 
-    train_dataset = dataset["train"].shuffle(seed=seed).select(range(MAX_TRAIN_SAMPLES))
-    eval_dataset = dataset["test"].shuffle(seed=seed).select(range(MAX_EVAL_SAMPLES))
+    train_dataset = dataset["train"].shuffle(seed=seed)
+    eval_dataset = dataset["test"].shuffle(seed=seed)
 
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
     tokenizer.pad_token = tokenizer.eos_token

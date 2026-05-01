@@ -4,7 +4,8 @@ import torch.nn.functional as F
 import functools
 
 @functools.lru_cache(maxsize=32)
-def _get_mask(seq_len_cache, depth_len_cache, causal_cache, device_cache):
+def _get_mask(seq_len_cache, depth_len_cache, causal_cache, device_str):
+    device_cache = torch.device(device_str)
     mask = torch.zeros((seq_len_cache, depth_len_cache + seq_len_cache), dtype=torch.bool, device=device_cache)
 
     if causal_cache:
@@ -86,7 +87,7 @@ def unified_attention_reference(
     # 1. Any query to attend to any depth KV token (fully visible)
     # 2. Query at pos `i` to attend to seq KV token `j` only if `j <= i` (causal)
 
-    mask = _get_mask(seq_len, depth_len, causal, q.device)
+    mask = _get_mask(seq_len, depth_len, causal, str(q.device))
 
     # Run scaled dot product attention
     out = F.scaled_dot_product_attention(

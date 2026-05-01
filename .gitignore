@@ -1,6 +1,11 @@
 __pycache__/
 *.pyc
 build/
+*.pt
 remoda_model.pt
 run_experiments.log
 plots/
+nlp_results.png
+rl_results.png
+learning_curves.png
+final_rl_output.log

@@ -297,6 +297,7 @@ def evaluate_dt(model, env, target_return=200):
 
 def main():
     import matplotlib.pyplot as plt
+    import random
 
     seeds = [42, 100, 1234]
     print(f"Running RL Evaluation over seeds: {seeds}")
@@ -312,6 +313,7 @@ def main():
         print(f"\n--- Running Seed: {seed} ---")
 
         # Set seeds for reproducibility
+        random.seed(seed)
         np.random.seed(seed)
         torch.manual_seed(seed)
         if torch.cuda.is_available():
@@ -340,6 +342,7 @@ def main():
             print(f"\n[Evaluating Architecture: {arch}]")
 
             # Reset seeds for consistency between architecture runs
+            random.seed(seed)
             np.random.seed(seed)
             torch.manual_seed(seed)
             if torch.cuda.is_available():

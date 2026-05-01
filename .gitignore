@@ -9,3 +9,17 @@ nlp_results.png
 rl_results.png
 learning_curves.png
 final_rl_output.log
+
+# Python/Environment
+__pycache__/
+*.py[cod]
+
+# Artifacts
+learning_curves.png
+nlp_results.png
+rl_results.png
+final_rl_output.log
+*.log
+
+# Models
+*.pt

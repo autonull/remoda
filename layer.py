@@ -107,8 +107,8 @@ class ReMoDALayer(nn.Module):
                 k_persistent = self.attn.k_proj(out_norm)
                 v_persistent = self.attn.v_proj(out_norm)
                 batch_size, seq_len, _ = hidden_states.size()
-                k_persistent = k_persistent.view(batch_size, seq_len, self.attn.num_heads, self.attn.head_dim).transpose(1, 2)
-                v_persistent = v_persistent.view(batch_size, seq_len, self.attn.num_heads, self.attn.head_dim).transpose(1, 2)
+                k_persistent = k_persistent.view(batch_size, seq_len, self.attn.num_key_value_heads, self.attn.head_dim).transpose(1, 2)
+                v_persistent = v_persistent.view(batch_size, seq_len, self.attn.num_key_value_heads, self.attn.head_dim).transpose(1, 2)
                 kv_cache.update(k_persistent, v_persistent, layer_idx)
         else:
             # Standard transformer: the KV cache just stores the input-projected KV

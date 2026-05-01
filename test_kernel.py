@@ -5,11 +5,12 @@ def test_unified_attention_causality():
     batch, num_heads, seq_len, head_dim = 2, 4, 16, 64
     depth_len = 8
 
+    num_key_value_heads = 2
     q = torch.randn(batch, num_heads, seq_len, head_dim, requires_grad=True)
-    seq_k = torch.randn(batch, num_heads, seq_len, head_dim, requires_grad=True)
-    seq_v = torch.randn(batch, num_heads, seq_len, head_dim, requires_grad=True)
-    depth_k = torch.randn(batch, num_heads, depth_len, head_dim, requires_grad=True)
-    depth_v = torch.randn(batch, num_heads, depth_len, head_dim, requires_grad=True)
+    seq_k = torch.randn(batch, num_key_value_heads, seq_len, head_dim, requires_grad=True)
+    seq_v = torch.randn(batch, num_key_value_heads, seq_len, head_dim, requires_grad=True)
+    depth_k = torch.randn(batch, num_key_value_heads, depth_len, head_dim, requires_grad=True)
+    depth_v = torch.randn(batch, num_key_value_heads, depth_len, head_dim, requires_grad=True)
 
     out = unified_attention_reference(q, seq_k, seq_v, depth_k, depth_v, causal=True)
 
@@ -27,10 +28,10 @@ def test_unified_attention_causality():
     # it should only affect output at positions >= T
 
     q2 = torch.randn(batch, num_heads, seq_len, head_dim)
-    seq_k2 = torch.randn(batch, num_heads, seq_len, head_dim)
-    seq_v2 = torch.randn(batch, num_heads, seq_len, head_dim)
-    depth_k2 = torch.randn(batch, num_heads, depth_len, head_dim)
-    depth_v2 = torch.randn(batch, num_heads, depth_len, head_dim)
+    seq_k2 = torch.randn(batch, num_key_value_heads, seq_len, head_dim)
+    seq_v2 = torch.randn(batch, num_key_value_heads, seq_len, head_dim)
+    depth_k2 = torch.randn(batch, num_key_value_heads, depth_len, head_dim)
+    depth_v2 = torch.randn(batch, num_key_value_heads, depth_len, head_dim)
 
     out1 = unified_attention_reference(q2, seq_k2, seq_v2, depth_k2, depth_v2, causal=True)
 

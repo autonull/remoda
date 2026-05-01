@@ -36,6 +36,12 @@ def get_config(arch_type: str, vocab_size: int, seq_len: int) -> ReMoDAConfig:
         base.use_rt_kv = True
         base.use_moda = True
         base.depth_slots = 2
+    elif arch_type == "ReMoDA-GQA":
+        base.num_hidden_layers = 2
+        base.use_rt_kv = True
+        base.use_moda = True
+        base.depth_slots = 2
+        base.num_key_value_heads = 2
     else:
         raise ValueError("Unknown architecture")
 
@@ -104,7 +110,7 @@ def main():
     print(f"Benchmarking ReMoDA vs Standard Transformer (Aggregated over {NUM_TRIALS} trials)")
     print("=" * 115)
 
-    architectures = ["Standard", "RT", "MoDA", "ReMoDA"]
+    architectures = ["Standard", "RT", "MoDA", "ReMoDA", "ReMoDA-GQA"]
 
     for test_config in configs_to_test:
         bs = test_config['batch_size']

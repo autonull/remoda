@@ -43,6 +43,25 @@ def unified_attention_reference(
     Returns:
         output: (batch, num_heads, seq_len, head_dim)
     """
+    def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+        """
+        This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep).
+        The hidden states go from (batch, num_key_value_heads, seqlen, head_dim)
+        to (batch, num_attention_heads, seqlen, head_dim)
+        """
+        batch, num_key_value_heads, slen, head_dim = hidden_states.shape
+        if n_rep == 1:
+            return hidden_states
+        hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
+        return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+
+    batch, num_heads, seq_len, head_dim = q.shape
+    num_key_value_heads = seq_k.shape[1]
+    n_rep = num_heads // num_key_value_heads
+
+    seq_k = repeat_kv(seq_k, n_rep)
+    seq_v = repeat_kv(seq_v, n_rep)
+
     has_depth = depth_k is not None and depth_v is not None
 
     if not has_depth:
@@ -51,7 +70,9 @@ def unified_attention_reference(
             q, seq_k, seq_v, is_causal=causal
         )
 
-    batch, num_heads, seq_len, head_dim = q.shape
+    depth_k = repeat_kv(depth_k, n_rep)
+    depth_v = repeat_kv(depth_v, n_rep)
+
     depth_len = depth_k.shape[2]
 
     # Concatenate depth and sequence keys/values along the sequence dimension

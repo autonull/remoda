@@ -22,6 +22,19 @@ def _get_mask(seq_len_cache, depth_len_cache, causal_cache, device_str):
     # or just broadcastable to it, so we can reshape to (1, 1, seq_len, depth_len + seq_len)
     return mask.view(1, 1, seq_len_cache, depth_len_cache + seq_len_cache)
 
+def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
+    """
+    This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep).
+    The hidden states go from (batch, num_key_value_heads, seqlen, head_dim)
+    to (batch, num_attention_heads, seqlen, head_dim)
+    """
+    batch, num_key_value_heads, slen, head_dim = hidden_states.shape
+    if n_rep == 1:
+        return hidden_states
+    hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
+    return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
+
+
 def unified_attention_reference(
     q: torch.Tensor,
     seq_k: torch.Tensor,
@@ -44,18 +57,6 @@ def unified_attention_reference(
     Returns:
         output: (batch, num_heads, seq_len, head_dim)
     """
-    def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
-        """
-        This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep).
-        The hidden states go from (batch, num_key_value_heads, seqlen, head_dim)
-        to (batch, num_attention_heads, seqlen, head_dim)
-        """
-        batch, num_key_value_heads, slen, head_dim = hidden_states.shape
-        if n_rep == 1:
-            return hidden_states
-        hidden_states = hidden_states[:, :, None, :, :].expand(batch, num_key_value_heads, n_rep, slen, head_dim)
-        return hidden_states.reshape(batch, num_key_value_heads * n_rep, slen, head_dim)
-
     batch, num_heads, seq_len, head_dim = q.shape
     num_key_value_heads = seq_k.shape[1]
     n_rep = num_heads // num_key_value_heads

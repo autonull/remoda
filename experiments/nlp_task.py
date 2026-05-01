@@ -183,6 +183,7 @@ def evaluate(model, eval_loader):
 
 def main():
     import matplotlib.pyplot as plt
+    import random
 
     seeds = [42, 100, 1234]
     print(f"Running NLP Evaluation over seeds: {seeds}")
@@ -199,6 +200,7 @@ def main():
             print(f"\n[Evaluating Architecture: {arch}]")
 
             # Set seeds for reproducibility per architecture run
+            random.seed(seed)
             np.random.seed(seed)
             torch.manual_seed(seed)
             if torch.cuda.is_available():

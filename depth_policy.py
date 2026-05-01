@@ -1,4 +1,5 @@
 import torch
+import random
 from abc import ABC, abstractmethod
 from typing import List, Tuple, Optional
 
@@ -41,7 +42,6 @@ class LastNPlusRandomDepthPolicy(DepthSelectionPolicy):
 
         # Sample 1 random distant layer if available
         if start_idx > 0:
-            import random
             random_idx = random.randint(0, start_idx - 1)
             indices.insert(0, random_idx)
 

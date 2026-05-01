@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader, Dataset
 from datasets import load_dataset
 from transformers import AutoTokenizer
 import time
-from sklearn.metrics import f1_score
+from sklearn.metrics import f1_score, precision_score, recall_score
 
 from config import ReMoDAConfig
 from model import ReMoDAForSequenceClassification
@@ -149,7 +149,9 @@ def train(model, train_loader, optimizer):
     avg_loss = total_loss / len(train_loader)
     acc = correct / total
     f1 = f1_score(all_labels, all_preds, average='macro')
-    return avg_loss, acc, f1
+    precision = precision_score(all_labels, all_preds, average='macro', zero_division=0)
+    recall = recall_score(all_labels, all_preds, average='macro', zero_division=0)
+    return avg_loss, acc, f1, precision, recall
 
 @torch.no_grad()
 def evaluate(model, eval_loader):
@@ -177,7 +179,9 @@ def evaluate(model, eval_loader):
     avg_loss = total_loss / len(eval_loader)
     acc = correct / total
     f1 = f1_score(all_labels, all_preds, average='macro')
-    return avg_loss, acc, f1
+    precision = precision_score(all_labels, all_preds, average='macro', zero_division=0)
+    recall = recall_score(all_labels, all_preds, average='macro', zero_division=0)
+    return avg_loss, acc, f1, precision, recall
 
 def main():
     import matplotlib.pyplot as plt
@@ -186,7 +190,7 @@ def main():
     print(f"Running NLP Evaluation over seeds: {seeds}")
 
     architectures = ["Standard", "RT", "MoDA", "ReMoDA"]
-    results = {arch: {"accs": [], "losses": [], "f1s": []} for arch in architectures}
+    results = {arch: {"accs": [], "losses": [], "f1s": [], "precisions": [], "recalls": []} for arch in architectures}
 
     for seed in seeds:
         print(f"\n--- Running Seed: {seed} ---")
@@ -219,16 +223,18 @@ def main():
             print(f"Training NLP Task (IMDb Classification) - {arch}...")
             start_time = time.time()
             for epoch in range(EPOCHS):
-                train_loss, train_acc, train_f1 = train(model, train_loader, optimizer)
-                eval_loss, eval_acc, eval_f1 = evaluate(model, eval_loader)
+                train_loss, train_acc, train_f1, train_prec, train_rec = train(model, train_loader, optimizer)
+                eval_loss, eval_acc, eval_f1, eval_prec, eval_rec = evaluate(model, eval_loader)
 
                 print(f"Epoch {epoch+1}/{EPOCHS}")
-                print(f"  Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f} | Train F1: {train_f1:.4f}")
-                print(f"  Eval Loss:  {eval_loss:.4f} | Eval Acc:  {eval_acc:.4f} | Eval F1:  {eval_f1:.4f}")
+                print(f"  Train Loss: {train_loss:.4f} | Train Acc: {train_acc:.4f} | Train F1: {train_f1:.4f} | Train Prec: {train_prec:.4f} | Train Rec: {train_rec:.4f}")
+                print(f"  Eval Loss:  {eval_loss:.4f} | Eval Acc:  {eval_acc:.4f} | Eval F1:  {eval_f1:.4f} | Eval Prec: {eval_prec:.4f} | Eval Rec: {eval_rec:.4f}")
 
             results[arch]["accs"].append(eval_acc)
             results[arch]["losses"].append(eval_loss)
             results[arch]["f1s"].append(eval_f1)
+            results[arch]["precisions"].append(eval_prec)
+            results[arch]["recalls"].append(eval_rec)
             print(f"Architecture {arch} Seed {seed} Completed in {time.time() - start_time:.2f}s")
 
     print("\n=================================================================")
@@ -236,9 +242,11 @@ def main():
     print("-----------------------------------------------------------------")
     for arch in architectures:
         print(f"{arch} Architecture:")
-        print(f"  Mean Final Accuracy: {np.mean(results[arch]['accs']):.4f} ± {np.std(results[arch]['accs']):.4f}")
-        print(f"  Mean Final F1 Score: {np.mean(results[arch]['f1s']):.4f} ± {np.std(results[arch]['f1s']):.4f}")
-        print(f"  Mean Final Loss:     {np.mean(results[arch]['losses']):.4f} ± {np.std(results[arch]['losses']):.4f}")
+        print(f"  Mean Final Accuracy:  {np.mean(results[arch]['accs']):.4f} ± {np.std(results[arch]['accs']):.4f}")
+        print(f"  Mean Final F1 Score:  {np.mean(results[arch]['f1s']):.4f} ± {np.std(results[arch]['f1s']):.4f}")
+        print(f"  Mean Final Precision: {np.mean(results[arch]['precisions']):.4f} ± {np.std(results[arch]['precisions']):.4f}")
+        print(f"  Mean Final Recall:    {np.mean(results[arch]['recalls']):.4f} ± {np.std(results[arch]['recalls']):.4f}")
+        print(f"  Mean Final Loss:      {np.mean(results[arch]['losses']):.4f} ± {np.std(results[arch]['losses']):.4f}")
         print("-----------------------------------------------------------------")
     print("=================================================================")
 

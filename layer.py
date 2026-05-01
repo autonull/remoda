@@ -101,7 +101,7 @@ class ReMoDALayer(nn.Module):
             # We explicitly compute a persistent KV from the layer's OUTPUT, not its input.
             # This is what gets added to the `kv_cache` for deeper layers to retrieve.
             # We can re-use the attn module to just project k and v.
-            with torch.no_grad() if not hidden_states.requires_grad else torch.enable_grad():
+            with torch.set_grad_enabled(hidden_states.requires_grad):
                 # We do this to ensure we are projecting from the final normalized output.
                 out_norm = self.attn.kv_norm(hidden_states)
                 k_persistent = self.attn.k_proj(out_norm)

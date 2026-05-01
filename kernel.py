@@ -56,9 +56,9 @@ def unified_attention_reference(
 
         if causal:
             seq_mask = torch.tril(torch.ones((seq_len, seq_len), dtype=torch.bool, device=q.device))
-            num_slots = depth_len // seq_len
-            for s in range(num_slots):
-                mask[:, s * seq_len : (s + 1) * seq_len] = seq_mask
+            # Depth part is fully visible
+            mask[:, :depth_len] = True
+            # Sequence part is causal
             mask[:, depth_len:] = seq_mask
         else:
             # Depth and sequence parts are fully visible

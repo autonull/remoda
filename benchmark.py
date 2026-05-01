@@ -88,6 +88,7 @@ def benchmark_architecture(arch: str, batch_size: int, seq_len: int, vocab_size:
         "Params (M)": f"{num_params/1e6:.2f}M",
         "Latency Mean (ms)": np.mean(latencies),
         "Latency Std (ms)": np.std(latencies),
+        "Latency p95 (ms)": np.percentile(latencies, 95),
         "Throughput Mean (tok/s)": np.mean(throughputs),
         "Throughput Std (tok/s)": np.std(throughputs),
         "Memory Mean (MB)": np.mean(memories)
@@ -117,13 +118,14 @@ def main():
             res = benchmark_architecture(arch, bs, sl, vs)
             results[arch] = res
 
-        print(f"{'Architecture':<15} | {'Params':<10} | {'Latency (ms)':<25} | {'Throughput (tok/s)':<30} | {'Memory (MB)':<15}")
+        print(f"{'Architecture':<15} | {'Params':<10} | {'Latency (ms)':<20} | {'Lat p95 (ms)':<15} | {'Throughput (tok/s)':<25} | {'Memory (MB)':<15}")
         print("-" * 115)
         for arch, res in results.items():
             latency_str = f"{res['Latency Mean (ms)']:.2f} ± {res['Latency Std (ms)']:.2f}"
+            lat_p95_str = f"{res['Latency p95 (ms)']:.2f}"
             throughput_str = f"{res['Throughput Mean (tok/s)']:.2f} ± {res['Throughput Std (tok/s)']:.2f}"
             memory_str = f"{res['Memory Mean (MB)']:.2f}"
-            print(f"{arch:<15} | {res['Params (M)']:<10} | {latency_str:<25} | {throughput_str:<30} | {memory_str:<15}")
+            print(f"{arch:<15} | {res['Params (M)']:<10} | {latency_str:<20} | {lat_p95_str:<15} | {throughput_str:<25} | {memory_str:<15}")
         print("=" * 115)
 
 if __name__ == "__main__":

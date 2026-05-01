@@ -151,7 +151,7 @@ def get_batch(trajectories, batch_size, seq_len):
 
 def train_dt(model, optimizer, trajectories, epochs=100, steps_per_epoch=20):
     model.train()
-    loss_fn = nn.CrossEntropyLoss()
+    loss_fn = nn.CrossEntropyLoss(reduction='none')
 
     start_time = time.time()
 
@@ -176,10 +176,18 @@ def train_dt(model, optimizer, trajectories, epochs=100, steps_per_epoch=20):
             action_preds_flat = action_preds.reshape(-1, action_preds.size(-1))
             actions_flat = actions.reshape(-1)
 
-            # We will use CrossEntropyLoss's ignore_index if we mapped padding to a specific value,
-            # but since 0 is a valid action, we'll keep the simple loss for now and acknowledge the padding noise
-            # is minimal for this sandbox demonstration.
+            # Identify valid unpadded steps.
+            # In our simple padding logic, padded actions might be 0, but 0 is also a valid action.
+            # However, padded timesteps might be just sequential.
+            # We can use the states_flat or simply pass a valid mask.
+            # Wait, `get_batch` adds actual states. We padded states with zeros. We padded RTG with zeros.
+            # The most reliable way for this sandbox is to mask where sum of state == 0, since CartPole states are rarely exactly 0.0 everywhere.
+            states_flat = states.reshape(-1, states.size(-1))
+            valid_mask = (torch.sum(torch.abs(states_flat), dim=-1) != 0).float()
+
             loss = loss_fn(action_preds_flat, actions_flat)
+            loss = (loss * valid_mask).sum() / (valid_mask.sum() + 1e-8)
+
             loss.backward()
             optimizer.step()
 

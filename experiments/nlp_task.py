@@ -240,11 +240,22 @@ def main():
     print(f"Final NLP Task Evaluation Results (Across {len(seeds)} Seeds):")
     print("-----------------------------------------------------------------")
     for arch in architectures:
+        # Calculate params
+        if arch == "Standard": config = get_standard_config(vocab_size)
+        elif arch == "RT": config = get_rt_config(vocab_size)
+        elif arch == "MoDA": config = get_moda_config(vocab_size)
+        elif arch == "ReMoDA": config = get_config(vocab_size)
+
+        model = ReMoDAForSequenceClassification(config, num_labels=2)
+        num_params = sum(p.numel() for p in model.parameters()) / 1e6
+        mean_f1 = np.mean(results[arch]['f1s'])
+        efficiency = mean_f1 / (num_params + 1e-8)
+
         print(f"{arch} Architecture:")
+        print(f"  Params:               {num_params:.2f}M")
         print(f"  Mean Final Accuracy:  {np.mean(results[arch]['accs']):.4f} ± {np.std(results[arch]['accs']):.4f}")
-        print(f"  Mean Final F1 Score:  {np.mean(results[arch]['f1s']):.4f} ± {np.std(results[arch]['f1s']):.4f}")
-        print(f"  Mean Final Precision: {np.mean(results[arch]['precisions']):.4f} ± {np.std(results[arch]['precisions']):.4f}")
-        print(f"  Mean Final Recall:    {np.mean(results[arch]['recalls']):.4f} ± {np.std(results[arch]['recalls']):.4f}")
+        print(f"  Mean Final F1 Score:  {mean_f1:.4f} ± {np.std(results[arch]['f1s']):.4f}")
+        print(f"  Efficiency (F1/MParams): {efficiency:.4f}")
         print(f"  Mean Final Loss:      {np.mean(results[arch]['losses']):.4f} ± {np.std(results[arch]['losses']):.4f}")
         print("-----------------------------------------------------------------")
     print("=================================================================")

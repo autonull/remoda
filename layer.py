@@ -29,7 +29,10 @@ class ReMoDALayer(nn.Module):
         self,
         hidden_states: torch.Tensor,
         layer_idx: int,
-        kv_cache: ReMoDACache
+        kv_cache: ReMoDACache,
+        cos: Optional[torch.Tensor] = None,
+        sin: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None
     ) -> torch.Tensor:
 
         residual = hidden_states
@@ -78,7 +81,10 @@ class ReMoDALayer(nn.Module):
             hidden_states=normed_hidden_states,
             layer_idx=layer_idx,
             kv_cache=kv_cache,
-            output_states=None
+            output_states=None,
+            cos=cos,
+            sin=sin,
+            position_ids=position_ids
         )
 
         # 2. Residual + Post-Norm (or Pre-Norm)

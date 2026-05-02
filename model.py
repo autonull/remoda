@@ -12,9 +12,14 @@ class ReMoDAModel(nn.Module):
         self.config = config
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size)
 
-        # RoPE would typically go here, omitting for minimal purity or using absolute.
-        # Let's use learned absolute position embeddings for simplicity.
-        self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
+        # RoPE Setup
+        if config.use_rope:
+            self.head_dim = config.hidden_size // config.num_attention_heads
+            inv_freq = 1.0 / (10000 ** (torch.arange(0, self.head_dim, 2).float() / self.head_dim))
+            self.register_buffer("inv_freq", inv_freq, persistent=False)
+        else:
+            # Let's use learned absolute position embeddings for simplicity if RoPE is disabled.
+            self.position_embeddings = nn.Embedding(config.max_position_embeddings, config.hidden_size)
 
         self.layers = nn.ModuleList([ReMoDALayer(config) for _ in range(config.num_hidden_layers)])
         self.norm = nn.RMSNorm(config.hidden_size)
@@ -23,19 +28,30 @@ class ReMoDAModel(nn.Module):
         # Tie weights
         self.embed_tokens.weight = self.lm_head.weight
 
+    def _get_cos_sin(self, seq_len, device):
+        t = torch.arange(seq_len, device=device).type_as(self.inv_freq)
+        freqs = torch.einsum("i,j->ij", t, self.inv_freq)
+        emb = torch.cat((freqs, freqs), dim=-1)
+        return emb.cos(), emb.sin()
+
     def forward(self, input_ids: torch.Tensor, labels: Optional[torch.Tensor] = None):
         batch_size, seq_len = input_ids.shape
 
         # Embeddings
-        positions = torch.arange(0, seq_len, dtype=torch.long, device=input_ids.device)
-        positions = positions.unsqueeze(0).expand(batch_size, -1)
+        hidden_states = self.embed_tokens(input_ids)
 
-        hidden_states = self.embed_tokens(input_ids) + self.position_embeddings(positions)
+        cos, sin, position_ids = None, None, None
+        if self.config.use_rope:
+            cos, sin = self._get_cos_sin(seq_len, input_ids.device)
+        else:
+            positions = torch.arange(0, seq_len, dtype=torch.long, device=input_ids.device)
+            position_ids = positions.unsqueeze(0).expand(batch_size, -1)
+            hidden_states = hidden_states + self.position_embeddings(position_ids)
 
         # Forward pass through layers
         kv_cache = ReMoDACache()
         for i, layer in enumerate(self.layers):
-            hidden_states = layer(hidden_states, i, kv_cache)
+            hidden_states = layer(hidden_states, i, kv_cache, cos=cos, sin=sin, position_ids=position_ids)
 
         hidden_states = self.norm(hidden_states)
         logits = self.lm_head(hidden_states)
@@ -86,13 +102,14 @@ class ReMoDADecisionTransformer(nn.Module):
         action_embeddings = self.embed_action(actions)
         rtg_embeddings = self.embed_rtg(returns_to_go)
 
-        # Time embeddings
-        time_embeddings = self.model.position_embeddings(timesteps)
+        if not self.config.use_rope:
+            # Time embeddings
+            time_embeddings = self.model.position_embeddings(timesteps)
 
-        # Add time embeddings
-        state_embeddings = state_embeddings + time_embeddings
-        action_embeddings = action_embeddings + time_embeddings
-        rtg_embeddings = rtg_embeddings + time_embeddings
+            # Add time embeddings
+            state_embeddings = state_embeddings + time_embeddings
+            action_embeddings = action_embeddings + time_embeddings
+            rtg_embeddings = rtg_embeddings + time_embeddings
 
         # Interleave tokens: (R_1, s_1, a_1, R_2, s_2, a_2, ...)
         # Stack shape: (batch_size, seq_length, 3, hidden_size)
@@ -103,10 +120,21 @@ class ReMoDADecisionTransformer(nn.Module):
         # Reshape to (batch_size, seq_length * 3, hidden_size)
         hidden_states = stacked_inputs.reshape(batch_size, 3 * seq_length, self.hidden_size)
 
+        cos, sin, position_ids = None, None, None
+        if self.config.use_rope:
+            # DT has interleaved tokens, so we need to expand timesteps
+            # timesteps is (batch, seq_len)
+            # each timestep has 3 tokens.
+            # position_ids for RoPE: (batch, 3 * seq_len)
+            position_ids = timesteps.repeat_interleave(3, dim=1)
+            # We use the max possible position to get cos/sin
+            max_pos = position_ids.max().item() + 1
+            cos, sin = self.model._get_cos_sin(int(max_pos), states.device)
+
         # Forward pass through layers (bypassing embed_tokens since we just created hidden_states)
         kv_cache = ReMoDACache()
         for i, layer in enumerate(self.model.layers):
-            hidden_states = layer(hidden_states, i, kv_cache)
+            hidden_states = layer(hidden_states, i, kv_cache, cos=cos, sin=sin, position_ids=position_ids)
 
         hidden_states = self.model.norm(hidden_states)
 
@@ -135,14 +163,20 @@ class ReMoDAForSequenceClassification(nn.Module):
         # Pass through the base model
         # We ignore the lm_head logits returned by ReMoDAModel
         batch_size, seq_len = input_ids.shape
-        positions = torch.arange(0, seq_len, dtype=torch.long, device=input_ids.device)
-        positions = positions.unsqueeze(0).expand(batch_size, -1)
 
-        hidden_states = self.model.embed_tokens(input_ids) + self.model.position_embeddings(positions)
+        hidden_states = self.model.embed_tokens(input_ids)
+
+        cos, sin, position_ids = None, None, None
+        if self.config.use_rope:
+            cos, sin = self.model._get_cos_sin(seq_len, input_ids.device)
+        else:
+            positions = torch.arange(0, seq_len, dtype=torch.long, device=input_ids.device)
+            position_ids = positions.unsqueeze(0).expand(batch_size, -1)
+            hidden_states = hidden_states + self.model.position_embeddings(position_ids)
 
         kv_cache = ReMoDACache()
         for i, layer in enumerate(self.model.layers):
-            hidden_states = layer(hidden_states, i, kv_cache)
+            hidden_states = layer(hidden_states, i, kv_cache, cos=cos, sin=sin, position_ids=position_ids)
 
         hidden_states = self.model.norm(hidden_states)
 

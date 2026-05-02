@@ -46,6 +46,24 @@ def test_unified_attention_causality():
     # Positions >= 5 should be different (with high probability)
     assert not torch.allclose(out1[:, :, 5:, :], out2[:, :, 5:, :], atol=1e-6), "Causality violated: future unchanged!"
 
+    # 4. Check Depth Gate
+    depth_gate_0 = torch.zeros(1, num_heads, 1, 1)
+    depth_gate_1 = torch.ones(1, num_heads, 1, 1)
+    depth_gate_2 = torch.full((1, num_heads, 1, 1), 2.0)
+
+    out_g0 = unified_attention_reference(q2, seq_k2, seq_v2, depth_k2, depth_v2, causal=True, depth_gate=depth_gate_0)
+    out_g1 = unified_attention_reference(q2, seq_k2, seq_v2, depth_k2, depth_v2, causal=True, depth_gate=depth_gate_1)
+    out_g2 = unified_attention_reference(q2, seq_k2, seq_v2, depth_k2, depth_v2, causal=True, depth_gate=depth_gate_2)
+
+    assert not torch.allclose(out_g0, out_g1, atol=1e-6), "Depth gate 0 should be different from gate 1"
+    assert not torch.allclose(out_g1, out_g2, atol=1e-6), "Depth gate 1 should be different from gate 2"
+
+    # Grad check for depth gate
+    depth_gate_param = torch.nn.Parameter(torch.ones(1, num_heads, 1, 1))
+    out_g = unified_attention_reference(q2, seq_k2, seq_v2, depth_k2, depth_v2, causal=True, depth_gate=depth_gate_param)
+    out_g.sum().backward()
+    assert depth_gate_param.grad is not None, "Gradient did not flow to depth_gate"
+
     print("All kernel tests passed!")
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from typing import Optional, Tuple, List
-from kernel import get_attention_kernel
+from kernel import get_attention_kernel, apply_rotary_pos_emb
 from config import ReMoDAConfig
 from depth_policy import get_depth_policy
 from cache import ReMoDACache
@@ -26,12 +26,20 @@ class ReMoDAAttention(nn.Module):
         self.attn_fn = get_attention_kernel(use_triton=False)
         self.depth_policy = get_depth_policy(config.depth_selection_policy)
 
+        if config.use_depth_gate:
+            self.depth_gate = nn.Parameter(torch.ones(1, self.num_heads, 1, 1))
+        else:
+            self.depth_gate = None
+
     def forward(
         self,
         hidden_states: torch.Tensor,
         layer_idx: int,
         kv_cache: ReMoDACache,
-        output_states: Optional[torch.Tensor] = None
+        output_states: Optional[torch.Tensor] = None,
+        cos: Optional[torch.Tensor] = None,
+        sin: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None
     ) -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
 
         batch_size, seq_len, _ = hidden_states.size()
@@ -51,6 +59,10 @@ class ReMoDAAttention(nn.Module):
         k = k.view(batch_size, seq_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
         v = v.view(batch_size, seq_len, self.num_key_value_heads, self.head_dim).transpose(1, 2)
 
+        # Apply RoPE if provided
+        if self.config.use_rope and cos is not None and sin is not None:
+            q, k = apply_rotary_pos_emb(q, k, cos, sin, position_ids)
+
         current_layer_kv = (k, v)
 
         # Depth KV retrieval (MoDA)
@@ -65,7 +77,8 @@ class ReMoDAAttention(nn.Module):
             seq_v=v,
             depth_k=depth_k,
             depth_v=depth_v,
-            causal=True
+            causal=True,
+            depth_gate=self.depth_gate
         )
 
         attn_output = attn_output.transpose(1, 2).contiguous()

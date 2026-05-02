@@ -1,3 +1,4 @@
+import os
 import torch
 from transformers import AutoTokenizer
 from config import ReMoDAConfig
@@ -45,7 +46,6 @@ def main():
     print("Loading tokenizer...")
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
 
-    import os
     print("Initializing ReMoDA model...")
 
     # Needs to match the config used in train.py for ReMoDA

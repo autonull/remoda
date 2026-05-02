@@ -6,6 +6,7 @@ import math
 import time
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 
 from config import ReMoDAConfig
 from model import ReMoDAModel
@@ -114,8 +115,6 @@ def train_model(arch_type: str, seed: int):
     return results, num_params
 
 def main():
-    import matplotlib.pyplot as plt
-
     architectures = ["Standard", "RT", "MoDA", "ReMoDA", "ReMoDA-GQA"]
     final_results = {}
     all_learning_curves_mean = {}

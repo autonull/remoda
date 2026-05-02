@@ -4,6 +4,8 @@ from torch.utils.data import DataLoader, Dataset
 from datasets import load_dataset
 from transformers import AutoTokenizer
 import time
+import random
+import matplotlib.pyplot as plt
 from sklearn.metrics import f1_score, precision_score, recall_score
 
 from config import ReMoDAConfig
@@ -182,9 +184,6 @@ def evaluate(model, eval_loader):
     return avg_loss, acc, f1, precision, recall
 
 def main():
-    import matplotlib.pyplot as plt
-    import random
-
     seeds = [42, 100, 1234]
     print(f"Running NLP Evaluation over seeds: {seeds}")
 

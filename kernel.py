@@ -22,6 +22,29 @@ def _get_mask(seq_len_cache, depth_len_cache, causal_cache, device_str):
     # or just broadcastable to it, so we can reshape to (1, 1, seq_len, depth_len + seq_len)
     return mask.view(1, 1, seq_len_cache, depth_len_cache + seq_len_cache)
 
+def rotate_half(x):
+    """Rotates half the hidden dims of the input."""
+    x1 = x[..., : x.shape[-1] // 2]
+    x2 = x[..., x.shape[-1] // 2 :]
+    return torch.cat((-x2, x1), dim=-1)
+
+
+def apply_rotary_pos_emb(q, k, cos, sin, position_ids=None, unsqueeze_dim=1):
+    """Applies Rotary Positional Embeddings to the query and key tensors."""
+    # cos, sin: (seq_len, head_dim)
+    if position_ids is not None:
+        # position_ids: (batch, seq_len)
+        cos = cos[position_ids].unsqueeze(unsqueeze_dim)  # (batch, 1, seq_len, head_dim)
+        sin = sin[position_ids].unsqueeze(unsqueeze_dim)  # (batch, 1, seq_len, head_dim)
+    else:
+        cos = cos.unsqueeze(0).unsqueeze(unsqueeze_dim) # (1, 1, seq_len, head_dim)
+        sin = sin.unsqueeze(0).unsqueeze(unsqueeze_dim) # (1, 1, seq_len, head_dim)
+
+    q_embed = (q * cos) + (rotate_half(q) * sin)
+    k_embed = (k * cos) + (rotate_half(k) * sin)
+    return q_embed, k_embed
+
+
 def repeat_kv(hidden_states: torch.Tensor, n_rep: int) -> torch.Tensor:
     """
     This is the equivalent of torch.repeat_interleave(x, dim=1, repeats=n_rep).
@@ -41,7 +64,8 @@ def unified_attention_reference(
     seq_v: torch.Tensor,
     depth_k: torch.Tensor = None,
     depth_v: torch.Tensor = None,
-    causal: bool = True
+    causal: bool = True,
+    depth_gate: torch.Tensor = None
 ) -> torch.Tensor:
     """
     Computes joint attention over sequence KV and cross-layer depth KV.
@@ -80,7 +104,13 @@ def unified_attention_reference(
     # Concatenate depth and sequence keys/values along the sequence dimension
     # (batch, num_heads, depth_len + seq_len, head_dim)
     k_combined = torch.cat([depth_k, seq_k], dim=2)
-    v_combined = torch.cat([depth_v, seq_v], dim=2)
+
+    if depth_gate is not None:
+        # depth_gate: (batch, num_heads, 1, 1) or similar broadcastable
+        # We apply the gate to depth values only
+        v_combined = torch.cat([depth_v * depth_gate, seq_v], dim=2)
+    else:
+        v_combined = torch.cat([depth_v, seq_v], dim=2)
 
     # We need to construct a custom mask since the depth KV is not causal
     # but the sequence KV is causal.
@@ -108,7 +138,8 @@ class AttentionKernel(ABC):
         seq_v: torch.Tensor,
         depth_k: torch.Tensor = None,
         depth_v: torch.Tensor = None,
-        causal: bool = True
+        causal: bool = True,
+        depth_gate: torch.Tensor = None
     ) -> torch.Tensor:
         pass
 
@@ -120,9 +151,10 @@ class PyTorchSDPAKernel(AttentionKernel):
         seq_v: torch.Tensor,
         depth_k: torch.Tensor = None,
         depth_v: torch.Tensor = None,
-        causal: bool = True
+        causal: bool = True,
+        depth_gate: torch.Tensor = None
     ) -> torch.Tensor:
-        return unified_attention_reference(q, seq_k, seq_v, depth_k, depth_v, causal)
+        return unified_attention_reference(q, seq_k, seq_v, depth_k, depth_v, causal, depth_gate)
 
 def get_attention_kernel(use_triton: bool = False) -> AttentionKernel:
     """

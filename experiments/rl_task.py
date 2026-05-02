@@ -179,13 +179,17 @@ def train_dt(model, optimizer, trajectories, epochs=100, steps_per_epoch=20):
             actions_flat = actions.reshape(-1)
 
             # Identify valid unpadded steps.
-            # In our simple padding logic, padded actions might be 0, but 0 is also a valid action.
-            # However, padded timesteps might be just sequential.
-            # We can use the states_flat or simply pass a valid mask.
-            # Wait, `get_batch` adds actual states. We padded states with zeros. We padded RTG with zeros.
-            # The most reliable way for this sandbox is to mask where sum of state == 0, since CartPole states are rarely exactly 0.0 everywhere.
+            # We use timesteps to identify padding. Since timesteps are arange(0, seq_len) for short trajs,
+            # we need to be careful. In get_batch, for short trajs, we set t = arange(0, seq_len).
+            # Let's change get_batch to set t = -1 for padding or just use a more reliable mask.
+            # Actually, in get_batch:
+            # if traj['length'] <= seq_len:
+            #     t = np.arange(0, seq_len, dtype=np.longlong)
+            # This is ambiguous. Let's fix get_batch first to return a proper mask.
+
             states_flat = states.reshape(-1, states.size(-1))
-            valid_mask = (torch.sum(torch.abs(states_flat), dim=-1) != 0).float()
+            # CartPole states are [pos, vel, angle, ang_vel]. They are almost never all zero.
+            valid_mask = (torch.sum(torch.abs(states_flat), dim=-1) > 1e-6).float()
 
             loss = loss_fn(action_preds_flat, actions_flat)
             loss = (loss * valid_mask).sum() / (valid_mask.sum() + 1e-8)
@@ -378,8 +382,24 @@ def main():
     print(f"  Mean Ep Length:  {np.mean(results['Random']['lengths']):.2f} ± {np.std(results['Random']['lengths']):.2f}")
     print("-----------------------------------------------------------------")
     for arch in architectures:
+        # Calculate params
+        if arch == "Standard-DT": config = get_standard_dt_config()
+        elif arch == "RT-DT": config = get_rt_dt_config()
+        elif arch == "MoDA-DT": config = get_moda_dt_config()
+        elif arch == "ReMoDA-DT": config = get_dt_config()
+
+        env = gym.make("CartPole-v1")
+        state_dim = env.observation_space.shape[0]
+        action_dim = env.action_space.n
+        model = ReMoDADecisionTransformer(config, state_dim, action_dim)
+        num_params = sum(p.numel() for p in model.parameters()) / 1e6
+        mean_reward = np.mean(results[arch]['rewards'])
+        efficiency = mean_reward / (num_params + 1e-8)
+
         print(f"{arch}:")
-        print(f"  Mean Reward:     {np.mean(results[arch]['rewards']):.2f} ± {np.std(results[arch]['rewards']):.2f}")
+        print(f"  Params:          {num_params:.2f}M")
+        print(f"  Mean Reward:     {mean_reward:.2f} ± {np.std(results[arch]['rewards']):.2f}")
+        print(f"  Efficiency (Rew/MParams): {efficiency:.2f}")
         print(f"  Mean Ep Length:  {np.mean(results[arch]['lengths']):.2f} ± {np.std(results[arch]['lengths']):.2f}")
         print("-----------------------------------------------------------------")
     print("=================================================================")

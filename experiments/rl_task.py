@@ -4,6 +4,8 @@ import torch.optim as optim
 import gymnasium as gym
 import numpy as np
 import time
+import random
+import matplotlib.pyplot as plt
 
 from config import ReMoDAConfig
 from model import ReMoDADecisionTransformer
@@ -118,7 +120,7 @@ def get_batch(trajectories, batch_size, seq_len):
 
     # Simple sampling: pick random trajectory, pick random start index
     for _ in range(batch_size):
-        traj = trajectories[np.random.randint(0, len(trajectories))]
+        traj = trajectories[random.randint(0, len(trajectories) - 1)]
 
         if traj['length'] <= seq_len:
             # Pad if too short
@@ -130,7 +132,7 @@ def get_batch(trajectories, batch_size, seq_len):
             r = np.concatenate([traj['rtg'], np.zeros((pad_len, 1), dtype=np.float32)])
             t = np.arange(0, seq_len, dtype=np.longlong)
         else:
-            start_idx = np.random.randint(0, traj['length'] - seq_len)
+            start_idx = random.randint(0, traj['length'] - seq_len - 1)
 
             s = traj['states'][start_idx:start_idx+seq_len]
             a = traj['actions'][start_idx:start_idx+seq_len]
@@ -296,9 +298,6 @@ def evaluate_dt(model, env, target_return=200):
     return np.mean(total_rewards), np.mean(episode_lengths)
 
 def main():
-    import matplotlib.pyplot as plt
-    import random
-
     seeds = [42, 100, 1234]
     print(f"Running RL Evaluation over seeds: {seeds}")
 
